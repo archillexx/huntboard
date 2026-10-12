@@ -1,21 +1,45 @@
 from dotenv import load_dotenv
-from openai import OpenAI
-from pydantic import BaseModel
+from openai import OpenAI, APIError
+from pydantic import BaseModel, ValidationError
+
 
 
 load_dotenv()
 client = OpenAI()
 
 
-def extract_skills(description):
-    response = client.responses.parse(
+class ExtractionFailed(Exception):
+    pass
+
+
+def extract_skills(description, llm_client=client):
+
+    try:
+        response = llm_client.responses.parse(
         text_format=ExtractedSkills,
         model = "gpt-5-mini",
         instructions = "Extract only the technical skills explicitly mentioned in the job description (e.g., programming languages, frameworks, libraries, databases, cloud platforms, tools, APIs, and technologies), exclude all soft skills and non-technical requirements",
         input = description,
-    )
+        )
 
-    return  response.output_parsed.skills
+        return  response.output_parsed.skills
+    except(APIError, ValidationError):
+        try:
+            response = llm_client.responses.parse(
+            text_format=ExtractedSkills,
+            model = "gpt-5-mini",
+            instructions = "Extract only the technical skills explicitly mentioned in the job description (e.g., programming languages, frameworks, libraries, databases, cloud platforms, tools, APIs, and technologies), exclude all soft skills and non-technical requirements",
+            input = description,
+            )
+
+            return  response.output_parsed.skills
+        
+        except(APIError, ValidationError):
+            raise ExtractionFailed("Could not extraxt skills after 2 attempts")
+            
+        
+    
+    
 
 
 class ExtractedSkills(BaseModel):
