@@ -1,6 +1,7 @@
 
 from scoring import fit_score
 from scoring import most_missed_skills
+from scoring import normalise_skills
 
 def test_normal_overlap():
     jobSkills = ["react","java"]
@@ -54,3 +55,20 @@ def test_duplicate_gap():
     jobs = [["react","java","C++","c++"],["react","java","C","python","c++"],["react","java","C","python","c++","aws"]]
     my_skills = ["react","java","C","python"]
     assert most_missed_skills(jobs,my_skills) == [('c++', 3), ('aws', 1)]
+
+def test_alias_maps_to_canonical():
+    skills = ["reactjs","ts","java","csharp","golang"]
+    assert normalise_skills(skills) == ["react","typescript","java","c#","go"]
+
+def test_cleans_before_lookup():
+    skills = ["  React JS ","ts","java","c sharp","golang"]
+    assert normalise_skills(skills) == ["react","typescript","java","c#","go"]
+
+def test_unknown_skill_passes_through():
+    skills = ["reactjs","ts","java","csharp","golang","dynamodb"]
+    assert normalise_skills(skills) == ["react","typescript","java","c#","go","dynamodb"]
+
+def test_fit_score_matches_aliases():
+    job_skills = ["reactjs","ts","java","csharp","golang","dynamodb"] 
+    my_skills = ["react","c#","golang","c++"]
+    assert fit_score(job_skills,my_skills) == (50,["dynamodb","java","typescript"])

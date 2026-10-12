@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from database import SessionLocal
 from models import Job, JobSkill, ProfileSkill, Skill
-from scoring import fit_score, most_missed_skills, to_lower_case
+from scoring import fit_score, most_missed_skills, normalise_skills
 
 app = FastAPI()
 
@@ -75,8 +75,8 @@ def profile_skill_names(db: Session) -> list[str]:
 
 def get_or_create_skills(db: Session, raw_names: list[str]) -> list[Skill]:
     """Find a skills row for each name, adding rows for names not seen before."""
-    # Blank entries are dropped; lowercasing is your to_lower_case from scoring.py.
-    names = set(to_lower_case([n.strip() for n in raw_names if n.strip()]))
+    # Blank entries are dropped; cleaning and aliases are your normalise_skills from scoring.py.
+    names = set(normalise_skills([n for n in raw_names if n.strip()]))
     found = {s.name: s for s in db.scalars(select(Skill).where(Skill.name.in_(names)))}
     for name in names - found.keys():
         found[name] = Skill(name=name)
