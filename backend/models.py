@@ -28,6 +28,9 @@ class Job(Base):
     # Pasted text, so they can be long; optional, since jobs can be saved before pasting.
     job_description: Mapped[str | None] = mapped_column(Text)
     resume_text: Mapped[str | None] = mapped_column(Text)
+    # Set by the server, never by the client: "none" (no description to read),
+    # "done" (skills extracted) or "failed" (AI gave up; the card offers Retry).
+    extraction_status: Mapped[str] = mapped_column(server_default="none")
 
 
 class Skill(Base):

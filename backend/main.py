@@ -7,6 +7,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
+from extraction import ExtractionFailed, extract_skills
 from models import Job, JobSkill, ProfileSkill, Skill
 from scoring import fit_score, most_missed_skills, normalise_skills
 
@@ -98,7 +99,33 @@ def job_to_api(job: Job, job_skills: list[str], my_skills: list[str]) -> dict:
         "skills": sorted(job_skills),
         "fitScore": score,
         "missingSkills": missing,
+        "extractionStatus": job.extraction_status,
     }
+
+
+def replace_job_skills(db: Session, job_id: int, raw_names: list[str]) -> list[str]:
+    """Swap a job's skill links for new ones. Doesn't commit: the caller decides when."""
+    skills = get_or_create_skills(db, raw_names)
+    db.execute(delete(JobSkill).where(JobSkill.job_id == job_id))
+    db.add_all(JobSkill(job_id=job_id, skill_id=s.id) for s in skills)
+    return [s.name for s in skills]
+
+
+def run_extraction(db: Session, job: Job) -> None:
+    """Fill a saved job's skills from its description with your extract_skills.
+
+    Never raises for an AI failure: the job is already saved, so a failure is only
+    recorded as extraction_status = "failed", which the card shows with a Retry button.
+    """
+    try:
+        names = extract_skills(job.job_description)
+    except ExtractionFailed:
+        job.extraction_status = "failed"
+        db.commit()
+        return
+    replace_job_skills(db, job.id, names)
+    job.extraction_status = "done"
+    db.commit()
 
 
 @app.get("/jobs")
@@ -120,9 +147,13 @@ def create_job(job_in: JobIn, db: Session = Depends(get_db)):
         resume_text=job_in.resumeText or None,
     )
     db.add(job)
-    db.commit()
+    db.commit()  # the job is saved before the AI is called, so a failure can't lose it
     db.refresh(job)
-    return job_to_api(job, [], profile_skill_names(db))
+    if job.job_description:
+        run_extraction(db, job)
+        db.refresh(job)
+    skills = job_skill_names(db, job.id).get(job.id, [])
+    return job_to_api(job, skills, profile_skill_names(db))
 
 
 @app.patch("/jobs/{job_id}")
@@ -142,11 +173,23 @@ def set_job_skills(job_id: int, skills_in: SkillsIn, db: Session = Depends(get_d
     job = db.get(Job, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    skills = get_or_create_skills(db, skills_in.skills)
-    db.execute(delete(JobSkill).where(JobSkill.job_id == job_id))
-    db.add_all(JobSkill(job_id=job_id, skill_id=s.id) for s in skills)
+    names = replace_job_skills(db, job_id, skills_in.skills)
     db.commit()
-    return job_to_api(job, [s.name for s in skills], profile_skill_names(db))
+    return job_to_api(job, names, profile_skill_names(db))
+
+
+@app.post("/jobs/{job_id}/extract")
+def retry_extraction(job_id: int, db: Session = Depends(get_db)):
+    """The Retry button: run extraction again on a saved job's description."""
+    job = db.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if not job.job_description:
+        raise HTTPException(status_code=400, detail="This job has no description to read")
+    run_extraction(db, job)
+    db.refresh(job)
+    skills = job_skill_names(db, job_id).get(job_id, [])
+    return job_to_api(job, skills, profile_skill_names(db))
 
 
 @app.get("/profile/skills")

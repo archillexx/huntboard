@@ -20,7 +20,18 @@ const SkillsEditor = ({ initialSkills, placeholder, onSave }) => {
     )
 }
 
-const JobCard = ({ companyName, jobRole, jobStatus, jobId, jobDescription, resumeText, skills, fitScore, missingSkills, onStatusChange, onSkillsSave }) => {
+const JobCard = ({ companyName, jobRole, jobStatus, jobId, jobDescription, resumeText, skills, fitScore, missingSkills, extractionStatus, onStatusChange, onSkillsSave, onRetry }) => {
+    const [retrying, setRetrying] = useState(false)
+
+    // Keep the button disabled until the server answers, so one click = one AI call.
+    const retry = async () => {
+        setRetrying(true)
+        try {
+            await onRetry(jobId)
+        } finally {
+            setRetrying(false)
+        }
+    }
 
     return (
         <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
@@ -47,7 +58,16 @@ const JobCard = ({ companyName, jobRole, jobStatus, jobId, jobDescription, resum
                     <p className="text-red-600">Missing: {missingSkills.join(", ")}</p>
                 )}
             </div>
-            <SkillsEditor initialSkills={skills} placeholder="Required skills, comma-separated" onSave={(list) => onSkillsSave(jobId, list)} />
+            {extractionStatus === "failed" && (
+                <div className="mt-2 flex items-center gap-2 text-sm">
+                    <p className="text-red-600">Couldn't read the skills from the description.</p>
+                    <button className="rounded-md border border-red-300 px-2 py-0.5 text-red-700 hover:bg-red-50 disabled:opacity-50" disabled={retrying} onClick={retry}>
+                        {retrying ? "Retrying…" : "Retry"}
+                    </button>
+                </div>
+            )}
+            {/* key: a new skills list remounts the editor, because its useState only reads initialSkills once */}
+            <SkillsEditor key={skills.join(",")} initialSkills={skills} placeholder="Required skills, comma-separated" onSave={(list) => onSkillsSave(jobId, list)} />
 
             {jobDescription && (
                 <p className="mt-3 line-clamp-3 whitespace-pre-line text-sm text-gray-700">{jobDescription}</p>
@@ -94,6 +114,7 @@ const JobList = () => {
     const [jobDescription, setJobDescription] = useState("")
     const [resumeText, setResumeText] = useState("")
     const [mySkills, setMySkills] = useState(null)  // null = not loaded yet
+    const [saving, setSaving] = useState(false)       // true while a new job (and its AI extraction) is saving
     const [gaps, setGaps] = useState([])
 
     const loadJobs = async () => {
@@ -126,19 +147,36 @@ const JobList = () => {
         // Quick check for the user; the server's Pydantic model is the real one.
         if (!companyName.trim() || !jobRole.trim()) return
 
-        const response = await fetch(`${API_URL}/jobs`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ companyName, jobRole, jobDescription, resumeText }),
-        })
+        // Saving can take several seconds while the AI reads the description.
+        setSaving(true)
+        try {
+            const response = await fetch(`${API_URL}/jobs`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ companyName, jobRole, jobDescription, resumeText }),
+            })
+            if (!response.ok) return
+
+            const savedJob = await response.json()
+            setJobArray((jobs) => [...jobs, savedJob])
+            setCompanyName("")
+            setJobRole("")
+            setJobDescription("")
+            setResumeText("")
+            loadGaps()
+        } finally {
+            setSaving(false)   // runs on success, early return, or a failed fetch
+        }
+    }
+
+    // The Retry button: ask the server to run extraction again, then swap in the updated job.
+    const retryExtraction = async (jobId) => {
+        const response = await fetch(`${API_URL}/jobs/${jobId}/extract`, { method: "POST" })
         if (!response.ok) return
 
         const savedJob = await response.json()
-        setJobArray([...jobArray, savedJob])
-        setCompanyName("")
-        setJobRole("")
-        setJobDescription("")
-        setResumeText("")
+        setJobArray((jobs) => jobs.map((job) => job.jobId === jobId ? savedJob : job))
+        loadGaps()
     }
     // Save the new status on the server first; only update the card once it's saved.
     const changeStatus = async (jobId, newStatus) => {
@@ -197,7 +235,7 @@ const JobList = () => {
 
             {jobArray.map((item) => {
 
-                return (<JobCard key={item.jobId} companyName={item.companyName} jobRole={item.jobRole} jobStatus={item.jobStatus} jobId={item.jobId} jobDescription={item.jobDescription} resumeText={item.resumeText} skills={item.skills} fitScore={item.fitScore} missingSkills={item.missingSkills} onStatusChange={changeStatus} onSkillsSave={saveJobSkills}></JobCard>)
+                return (<JobCard key={item.jobId} companyName={item.companyName} jobRole={item.jobRole} jobStatus={item.jobStatus} jobId={item.jobId} jobDescription={item.jobDescription} resumeText={item.resumeText} skills={item.skills} fitScore={item.fitScore} missingSkills={item.missingSkills} extractionStatus={item.extractionStatus} onStatusChange={changeStatus} onSkillsSave={saveJobSkills} onRetry={retryExtraction}></JobCard>)
 
             })}
             <div className="rounded-lg border border-dashed border-gray-300 p-4">
@@ -206,7 +244,7 @@ const JobList = () => {
                         <h4 className="font-semibold text-gray-900 sm:mr-2">Add Job</h4>
                         <input className="flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm" type="text" value={companyName} placeholder='Company Name' onChange={(e) => setCompanyName(e.target.value)} />
                         <input className="flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm" type="text" value={jobRole} placeholder='Job Role' onChange={(e) => setJobRole(e.target.value)} />
-                        <button className="rounded-md bg-indigo-600 px-3 py-1 text-sm font-medium text-white hover:bg-indigo-700">Submit</button>
+                        <button className="rounded-md bg-indigo-600 px-3 py-1 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50" disabled={saving}>{saving ? "Saving… reading the description" : "Submit"}</button>
                     </div>
                     <textarea className="h-24 w-full rounded-md border border-gray-300 px-2 py-1 text-sm" value={jobDescription} placeholder='Paste the job description (optional)' onChange={(e) => setJobDescription(e.target.value)} />
                     <textarea className="h-24 w-full rounded-md border border-gray-300 px-2 py-1 text-sm" value={resumeText} placeholder='Paste the resume you sent (optional)' onChange={(e) => setResumeText(e.target.value)} />
