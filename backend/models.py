@@ -65,3 +65,18 @@ class ProfileSkill(Base):
     skill_id: Mapped[int] = mapped_column(
         ForeignKey("skills.id", ondelete="CASCADE"), primary_key=True
     )
+
+
+class User(Base):
+    """One account. Stores a password hash, never the password itself."""
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Saved lowercased and trimmed, so "Ashwin@Gmail.com" and "ashwin@gmail.com" are one account.
+    email: Mapped[str] = mapped_column(unique=True)
+    # The full "$argon2id$..." string from pwdlib: algorithm, settings, salt and hash.
+    password_hash: Mapped[str]
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

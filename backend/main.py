@@ -2,13 +2,14 @@ from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, ConfigDict, Field
+from pwdlib import PasswordHash
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
 from extraction import ExtractionFailed, extract_skills
-from models import Job, JobSkill, ProfileSkill, Skill
+from models import Job, JobSkill, ProfileSkill, Skill, User
 from scoring import fit_score, most_missed_skills, normalise_skills
 
 app = FastAPI()
@@ -213,3 +214,30 @@ def list_gaps(db: Session = Depends(get_db)):
     jobs = list(job_skill_names(db).values())
     ranked = most_missed_skills(jobs, profile_skill_names(db))
     return [{"skill": skill, "count": count} for skill, count in ranked]
+
+
+# ---------- Accounts ----------
+
+# Argon2 with sensible settings: the same hasher you tried in your 7.1 drill.
+password_hasher = PasswordHash.recommended()
+
+
+class SignupIn(BaseModel):
+    """What a client sends to create an account."""
+
+    email: EmailStr                       # Pydantic rejects anything that isn't a real email shape
+    password: str = Field(min_length=8)   # a basic floor; the hash can't save a weak password
+
+
+@app.post("/auth/signup", status_code=201)
+def signup(signup_in: SignupIn, db: Session = Depends(get_db)):
+    """Create an account. Stores only the Argon2 hash; the password itself is never saved."""
+    email = signup_in.email.strip().lower()
+    if db.scalar(select(User).where(User.email == email)) is not None:
+        raise HTTPException(status_code=409, detail="An account with this email already exists")
+    user = User(email=email, password_hash=password_hasher.hash(signup_in.password))
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    # Never send the hash back: the client has no use for it.
+    return {"userId": user.id, "email": user.email}
