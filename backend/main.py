@@ -1,7 +1,12 @@
+import os
+from datetime import datetime, timedelta, timezone
 from typing import Literal
+
+import jwt
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordRequestForm
 from pwdlib import PasswordHash
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy import delete, select
@@ -221,6 +226,18 @@ def list_gaps(db: Session = Depends(get_db)):
 # Argon2 with sensible settings: the same hasher you tried in your 7.1 drill.
 password_hasher = PasswordHash.recommended()
 
+# Signs every login token. Read from .env (loaded by database.py); the app refuses to start without it.
+JWT_SECRET = os.environ["JWT_SECRET"]
+JWT_ALGORITHM = "HS256"
+TOKEN_LIFETIME = timedelta(hours=24)
+
+
+def create_access_token(user_id: int) -> str:
+    """A signed token saying "this is user <id>", valid for TOKEN_LIFETIME."""
+    expires = datetime.now(timezone.utc) + TOKEN_LIFETIME
+    claims = {"sub": str(user_id), "exp": expires}   # sub = who; exp = when it stops working
+    return jwt.encode(claims, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
 
 class SignupIn(BaseModel):
     """What a client sends to create an account."""
@@ -241,3 +258,20 @@ def signup(signup_in: SignupIn, db: Session = Depends(get_db)):
     db.refresh(user)
     # Never send the hash back: the client has no use for it.
     return {"userId": user.id, "email": user.email}
+
+
+
+@app.post("/auth/login")
+def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    """Check email + password and hand back a signed token.
+
+    Uses FastAPI's standard login form (fields "username" and "password"), so the
+    Authorize button on /docs can log in too. Here "username" is your email.
+    """
+    email = form.username.strip().lower()
+    user = db.scalar(select(User).where(User.email == email))
+    # Same message whether the email or the password was wrong, so attackers can't
+    # use this route to find out which emails have accounts.
+    if user is None or not password_hasher.verify(form.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Wrong email or password")
+    return {"access_token": create_access_token(user.id), "token_type": "bearer"}
