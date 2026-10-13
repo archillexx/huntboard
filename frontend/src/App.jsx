@@ -106,7 +106,17 @@ const GapList = ({ gaps }) => {
     )
 }
 
-const JobList = () => {
+const JobList = ({ token, onLogout }) => {
+
+    // Every API call goes through here: it adds the token, and a 401 (expired or bad token) logs out.
+    const api = async (path, options = {}) => {
+        const response = await fetch(`${API_URL}${path}`, {
+            ...options,
+            headers: { ...options.headers, Authorization: `Bearer ${token}` },
+        })
+        if (response.status === 401) onLogout()
+        return response
+    }
 
     const [jobArray, setJobArray] = useState([])
     const [companyName, setCompanyName] = useState("")
@@ -118,20 +128,23 @@ const JobList = () => {
     const [gaps, setGaps] = useState([])
 
     const loadJobs = async () => {
-        const response = await fetch(`${API_URL}/jobs`)
+        const response = await api(`/jobs`)
+        if (!response.ok) return
         setJobArray(await response.json())
     }
 
     // Gaps depend on everyone's skills, so this reloads after any skills save.
     const loadGaps = async () => {
-        const response = await fetch(`${API_URL}/gaps`)
+        const response = await api(`/gaps`)
+        if (!response.ok) return
         setGaps(await response.json())
     }
 
     // Load the jobs and my skills from the server once, when JobList first appears.
     useEffect(() => {
         const loadMySkills = async () => {
-            const response = await fetch(`${API_URL}/profile/skills`)
+            const response = await api(`/profile/skills`)
+            if (!response.ok) return
             setMySkills((await response.json()).skills)
         }
         loadJobs()
@@ -150,7 +163,7 @@ const JobList = () => {
         // Saving can take several seconds while the AI reads the description.
         setSaving(true)
         try {
-            const response = await fetch(`${API_URL}/jobs`, {
+            const response = await api(`/jobs`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ companyName, jobRole, jobDescription, resumeText }),
@@ -171,7 +184,7 @@ const JobList = () => {
 
     // The Retry button: ask the server to run extraction again, then swap in the updated job.
     const retryExtraction = async (jobId) => {
-        const response = await fetch(`${API_URL}/jobs/${jobId}/extract`, { method: "POST" })
+        const response = await api(`/jobs/${jobId}/extract`, { method: "POST" })
         if (!response.ok) return
 
         const savedJob = await response.json()
@@ -180,7 +193,7 @@ const JobList = () => {
     }
     // Save the new status on the server first; only update the card once it's saved.
     const changeStatus = async (jobId, newStatus) => {
-        const response = await fetch(`${API_URL}/jobs/${jobId}`, {
+        const response = await api(`/jobs/${jobId}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ jobStatus: newStatus }),
@@ -193,7 +206,7 @@ const JobList = () => {
 
     // Same pattern for a job's skills: the server sends back the job with its new score.
     const saveJobSkills = async (jobId, skillList) => {
-        const response = await fetch(`${API_URL}/jobs/${jobId}/skills`, {
+        const response = await api(`/jobs/${jobId}/skills`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ skills: skillList }),
@@ -207,7 +220,7 @@ const JobList = () => {
 
     // My skills change every job's score, so reload all the jobs after saving.
     const saveMySkills = async (skillList) => {
-        const response = await fetch(`${API_URL}/profile/skills`, {
+        const response = await api(`/profile/skills`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ skills: skillList }),
@@ -258,13 +271,73 @@ const JobList = () => {
     )
 }
 
+// Log in, or sign up (which creates the account and then logs straight in).
+const AuthForm = ({ onLogin }) => {
+    const [mode, setMode] = useState("login")   // "login" or "signup"
+    const [email, setEmail] = useState("")
+    const [password, setPassword] = useState("")
+    const [error, setError] = useState("")
+
+    const submit = async (e) => {
+        e.preventDefault()
+        setError("")
+
+        if (mode === "signup") {
+            const response = await fetch(`${API_URL}/auth/signup`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, password }),
+            })
+            if (response.status === 409) return setError("That email already has an account.")
+            if (!response.ok) return setError("Use a real email and a password of at least 8 characters.")
+        }
+
+        // The login route takes a form (username + password), not JSON: that's the OAuth2 standard.
+        const response = await fetch(`${API_URL}/auth/login`, {
+            method: "POST",
+            body: new URLSearchParams({ username: email, password }),
+        })
+        if (!response.ok) return setError("Wrong email or password.")
+
+        onLogin((await response.json()).access_token)
+    }
+
+    return (
+        <form className="space-y-3 rounded-lg border border-gray-200 bg-white p-6 shadow-sm" onSubmit={submit}>
+            <h2 className="text-xl font-semibold text-gray-900">{mode === "login" ? "Log in" : "Create an account"}</h2>
+            <input className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm" type="email" value={email} placeholder="Email" onChange={(e) => setEmail(e.target.value)} />
+            <input className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm" type="password" value={password} placeholder="Password" onChange={(e) => setPassword(e.target.value)} />
+            {error && <p className="text-sm text-red-600">{error}</p>}
+            <button className="w-full rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700">{mode === "login" ? "Log in" : "Sign up"}</button>
+            <button type="button" className="w-full text-sm text-indigo-600 hover:underline" onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError("") }}>
+                {mode === "login" ? "No account? Sign up" : "Have an account? Log in"}
+            </button>
+        </form>
+    )
+}
+
 const App = () => {
+    // The token lives in localStorage so a refresh keeps you logged in; null = logged out.
+    const [token, setToken] = useState(() => localStorage.getItem("token"))
+
+    const login = (newToken) => {
+        localStorage.setItem("token", newToken)
+        setToken(newToken)
+    }
+
+    const logout = () => {
+        localStorage.removeItem("token")
+        setToken(null)
+    }
+
     return (
         <div className="mx-auto min-h-screen max-w-2xl bg-gray-50 p-6">
-            <h1 className="mb-6 text-3xl font-bold text-gray-900"> Job Tracker </h1>
-            <JobList></JobList>
+            <div className="mb-6 flex items-center justify-between">
+                <h1 className="text-3xl font-bold text-gray-900">Job Tracker</h1>
+                {token && <button className="text-sm text-gray-600 hover:underline" onClick={logout}>Log out</button>}
+            </div>
+            {token ? <JobList token={token} onLogout={logout} /> : <AuthForm onLogin={login} />}
         </div>
-
     )
 }
 

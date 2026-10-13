@@ -24,7 +24,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_methods=["GET", "POST", "PATCH", "PUT"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Authorization"],  # Authorization carries the login token
 )
 
 JobStatus = Literal["Considering", "Applied", "Replied", "Interview", "Rejected", "Ghosted"]
