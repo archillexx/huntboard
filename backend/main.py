@@ -6,7 +6,7 @@ import jwt
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pwdlib import PasswordHash
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy import delete, select
@@ -61,6 +61,50 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+# ---------- Who is asking? ----------
+
+# Argon2 with sensible settings: the same hasher you tried in your 7.1 drill.
+password_hasher = PasswordHash.recommended()
+
+# Signs every login token. Read from .env (loaded by database.py); the app refuses to start without it.
+JWT_SECRET = os.environ["JWT_SECRET"]
+JWT_ALGORITHM = "HS256"
+TOKEN_LIFETIME = timedelta(hours=24)
+
+
+def create_access_token(user_id: int) -> str:
+    """A signed token saying "this is user <id>", valid for TOKEN_LIFETIME."""
+    expires = datetime.now(timezone.utc) + TOKEN_LIFETIME
+    claims = {"sub": str(user_id), "exp": expires}   # sub = who; exp = when it stops working
+    return jwt.encode(claims, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+# Reads "Authorization: Bearer <token>" from each request. tokenUrl tells /docs where
+# its Authorize button should log in.
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
+    """The dependency every data route uses: a valid token in, the logged-in User out.
+
+    Any failure stops the request here with 401, so the route itself never runs.
+    """
+    not_logged_in = HTTPException(
+        status_code=401,
+        detail="Not logged in",
+        headers={"WWW-Authenticate": "Bearer"},   # tells the client which kind of login is expected
+    )
+    try:
+        # Checks the signature AND the exp claim; a forged, expired or garbled token raises.
+        claims = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.InvalidTokenError:
+        raise not_logged_in
+    user = db.get(User, int(claims["sub"]))
+    if user is None:   # a valid token for an account that has since been deleted
+        raise not_logged_in
+    return user
 
 
 def job_skill_names(db: Session, job_id: int | None = None) -> dict[int, list[str]]:
@@ -135,7 +179,7 @@ def run_extraction(db: Session, job: Job) -> None:
 
 
 @app.get("/jobs")
-def list_jobs(db: Session = Depends(get_db)):
+def list_jobs(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     jobs = db.scalars(select(Job).order_by(Job.id)).all()
     skills = job_skill_names(db)
     mine = profile_skill_names(db)
@@ -143,7 +187,7 @@ def list_jobs(db: Session = Depends(get_db)):
 
 
 @app.post("/jobs", status_code=201)
-def create_job(job_in: JobIn, db: Session = Depends(get_db)):
+def create_job(job_in: JobIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     job = Job(
         company_name=job_in.companyName,
         job_role=job_in.jobRole,
@@ -163,7 +207,7 @@ def create_job(job_in: JobIn, db: Session = Depends(get_db)):
 
 
 @app.patch("/jobs/{job_id}")
-def update_job_status(job_id: int, update: JobStatusUpdate, db: Session = Depends(get_db)):
+def update_job_status(job_id: int, update: JobStatusUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     job = db.get(Job, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -174,7 +218,7 @@ def update_job_status(job_id: int, update: JobStatusUpdate, db: Session = Depend
 
 
 @app.put("/jobs/{job_id}/skills")
-def set_job_skills(job_id: int, skills_in: SkillsIn, db: Session = Depends(get_db)):
+def set_job_skills(job_id: int, skills_in: SkillsIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Replace a job's skills; the delete and the inserts commit together or not at all."""
     job = db.get(Job, job_id)
     if job is None:
@@ -185,7 +229,7 @@ def set_job_skills(job_id: int, skills_in: SkillsIn, db: Session = Depends(get_d
 
 
 @app.post("/jobs/{job_id}/extract")
-def retry_extraction(job_id: int, db: Session = Depends(get_db)):
+def retry_extraction(job_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """The Retry button: run extraction again on a saved job's description."""
     job = db.get(Job, job_id)
     if job is None:
@@ -199,12 +243,12 @@ def retry_extraction(job_id: int, db: Session = Depends(get_db)):
 
 
 @app.get("/profile/skills")
-def get_profile_skills(db: Session = Depends(get_db)):
+def get_profile_skills(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     return {"skills": profile_skill_names(db)}
 
 
 @app.put("/profile/skills")
-def set_profile_skills(skills_in: SkillsIn, db: Session = Depends(get_db)):
+def set_profile_skills(skills_in: SkillsIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Replace my skills, in one transaction like set_job_skills."""
     skills = get_or_create_skills(db, skills_in.skills)
     db.execute(delete(ProfileSkill))
@@ -214,7 +258,7 @@ def set_profile_skills(skills_in: SkillsIn, db: Session = Depends(get_db)):
 
 
 @app.get("/gaps")
-def list_gaps(db: Session = Depends(get_db)):
+def list_gaps(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """My most-missed skills across all jobs, ranked by your most_missed_skills."""
     jobs = list(job_skill_names(db).values())
     ranked = most_missed_skills(jobs, profile_skill_names(db))
@@ -222,22 +266,6 @@ def list_gaps(db: Session = Depends(get_db)):
 
 
 # ---------- Accounts ----------
-
-# Argon2 with sensible settings: the same hasher you tried in your 7.1 drill.
-password_hasher = PasswordHash.recommended()
-
-# Signs every login token. Read from .env (loaded by database.py); the app refuses to start without it.
-JWT_SECRET = os.environ["JWT_SECRET"]
-JWT_ALGORITHM = "HS256"
-TOKEN_LIFETIME = timedelta(hours=24)
-
-
-def create_access_token(user_id: int) -> str:
-    """A signed token saying "this is user <id>", valid for TOKEN_LIFETIME."""
-    expires = datetime.now(timezone.utc) + TOKEN_LIFETIME
-    claims = {"sub": str(user_id), "exp": expires}   # sub = who; exp = when it stops working
-    return jwt.encode(claims, JWT_SECRET, algorithm=JWT_ALGORITHM)
-
 
 class SignupIn(BaseModel):
     """What a client sends to create an account."""
