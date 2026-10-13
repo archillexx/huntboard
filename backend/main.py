@@ -107,9 +107,17 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     return user
 
 
-def job_skill_names(db: Session, job_id: int | None = None) -> dict[int, list[str]]:
-    """Skill names per job, from one JOIN of job_skills to skills (optionally for one job)."""
-    query = select(JobSkill.job_id, Skill.name).join(Skill, JobSkill.skill_id == Skill.id)
+def job_skill_names(db: Session, user_id: int, job_id: int | None = None) -> dict[int, list[str]]:
+    """Skill names per job for ONE user's jobs (optionally just one job).
+
+    The extra JOIN to jobs is what keeps another user's job skills out of the result.
+    """
+    query = (
+        select(JobSkill.job_id, Skill.name)
+        .join(Skill, JobSkill.skill_id == Skill.id)
+        .join(Job, JobSkill.job_id == Job.id)
+        .where(Job.user_id == user_id)
+    )
     if job_id is not None:
         query = query.where(JobSkill.job_id == job_id)
     names: dict[int, list[str]] = {}
@@ -118,9 +126,13 @@ def job_skill_names(db: Session, job_id: int | None = None) -> dict[int, list[st
     return names
 
 
-def profile_skill_names(db: Session) -> list[str]:
-    """My skill names, from a JOIN of profile_skills to skills."""
-    query = select(Skill.name).join(ProfileSkill, ProfileSkill.skill_id == Skill.id)
+def profile_skill_names(db: Session, user_id: int) -> list[str]:
+    """One user's skill names, from a JOIN of profile_skills to skills."""
+    query = (
+        select(Skill.name)
+        .join(ProfileSkill, ProfileSkill.skill_id == Skill.id)
+        .where(ProfileSkill.user_id == user_id)
+    )
     return sorted(db.scalars(query))
 
 
@@ -178,11 +190,29 @@ def run_extraction(db: Session, job: Job) -> None:
     db.commit()
 
 
+def get_own_job(db: Session, job_id: int, user: User) -> Job:
+    """Fetch a job only if it belongs to this user.
+
+    Someone else's job gets the same 404 as a job that doesn't exist, so users can't
+    probe which job ids are in use.
+    """
+    job = db.get(Job, job_id)
+    if job is None or job.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
+def job_response(db: Session, job: Job) -> dict:
+    """job_to_api with the job's own skills and its owner's profile."""
+    skills = job_skill_names(db, job.user_id, job.id).get(job.id, [])
+    return job_to_api(job, skills, profile_skill_names(db, job.user_id))
+
+
 @app.get("/jobs")
 def list_jobs(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    jobs = db.scalars(select(Job).order_by(Job.id)).all()
-    skills = job_skill_names(db)
-    mine = profile_skill_names(db)
+    jobs = db.scalars(select(Job).where(Job.user_id == user.id).order_by(Job.id)).all()
+    skills = job_skill_names(db, user.id)
+    mine = profile_skill_names(db, user.id)
     return [job_to_api(job, skills.get(job.id, []), mine) for job in jobs]
 
 
@@ -195,6 +225,7 @@ def create_job(job_in: JobIn, db: Session = Depends(get_db), user: User = Depend
         # A blank box arrives as "" after stripping; store it as NULL ("not pasted").
         job_description=job_in.jobDescription or None,
         resume_text=job_in.resumeText or None,
+        user_id=user.id,   # the owner comes from the token, never from the request body
     )
     db.add(job)
     db.commit()  # the job is saved before the AI is called, so a failure can't lose it
@@ -202,66 +233,58 @@ def create_job(job_in: JobIn, db: Session = Depends(get_db), user: User = Depend
     if job.job_description:
         run_extraction(db, job)
         db.refresh(job)
-    skills = job_skill_names(db, job.id).get(job.id, [])
-    return job_to_api(job, skills, profile_skill_names(db))
+    return job_response(db, job)
 
 
 @app.patch("/jobs/{job_id}")
 def update_job_status(job_id: int, update: JobStatusUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    job = db.get(Job, job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
+    job = get_own_job(db, job_id, user)
     job.job_status = update.jobStatus
     db.commit()
     db.refresh(job)
-    return job_to_api(job, job_skill_names(db, job_id).get(job_id, []), profile_skill_names(db))
+    return job_response(db, job)
 
 
 @app.put("/jobs/{job_id}/skills")
 def set_job_skills(job_id: int, skills_in: SkillsIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Replace a job's skills; the delete and the inserts commit together or not at all."""
-    job = db.get(Job, job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
-    names = replace_job_skills(db, job_id, skills_in.skills)
+    job = get_own_job(db, job_id, user)
+    replace_job_skills(db, job_id, skills_in.skills)
     db.commit()
-    return job_to_api(job, names, profile_skill_names(db))
+    return job_response(db, job)
 
 
 @app.post("/jobs/{job_id}/extract")
 def retry_extraction(job_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """The Retry button: run extraction again on a saved job's description."""
-    job = db.get(Job, job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
+    job = get_own_job(db, job_id, user)
     if not job.job_description:
         raise HTTPException(status_code=400, detail="This job has no description to read")
     run_extraction(db, job)
     db.refresh(job)
-    skills = job_skill_names(db, job_id).get(job_id, [])
-    return job_to_api(job, skills, profile_skill_names(db))
+    return job_response(db, job)
 
 
 @app.get("/profile/skills")
 def get_profile_skills(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    return {"skills": profile_skill_names(db)}
+    return {"skills": profile_skill_names(db, user.id)}
 
 
 @app.put("/profile/skills")
 def set_profile_skills(skills_in: SkillsIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Replace my skills, in one transaction like set_job_skills."""
     skills = get_or_create_skills(db, skills_in.skills)
-    db.execute(delete(ProfileSkill))
-    db.add_all(ProfileSkill(skill_id=s.id) for s in skills)
+    db.execute(delete(ProfileSkill).where(ProfileSkill.user_id == user.id))   # only MY rows
+    db.add_all(ProfileSkill(user_id=user.id, skill_id=s.id) for s in skills)
     db.commit()
-    return {"skills": profile_skill_names(db)}
+    return {"skills": profile_skill_names(db, user.id)}
 
 
 @app.get("/gaps")
 def list_gaps(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """My most-missed skills across all jobs, ranked by your most_missed_skills."""
-    jobs = list(job_skill_names(db).values())
-    ranked = most_missed_skills(jobs, profile_skill_names(db))
+    jobs = list(job_skill_names(db, user.id).values())
+    ranked = most_missed_skills(jobs, profile_skill_names(db, user.id))
     return [{"skill": skill, "count": count} for skill, count in ranked]
 
 

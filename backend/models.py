@@ -31,6 +31,9 @@ class Job(Base):
     # Set by the server, never by the client: "none" (no description to read),
     # "done" (skills extracted) or "failed" (AI gave up; the card offers Retry).
     extraction_status: Mapped[str] = mapped_column(server_default="none")
+    # Who owns this job. Every query filters on it, so users only ever see their own jobs.
+    # index=True: "all jobs WHERE user_id = ?" runs on every request, so look it up fast.
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
 
 
 class Skill(Base):
@@ -58,10 +61,14 @@ class JobSkill(Base):
 
 
 class ProfileSkill(Base):
-    """One row = 'I have this skill'. Single user, so no user column."""
+    """One row = 'this user has this skill' (a users <-> skills join table)."""
 
     __tablename__ = "profile_skills"
 
+    # Two-column primary key: each user can list a given skill once.
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
     skill_id: Mapped[int] = mapped_column(
         ForeignKey("skills.id", ondelete="CASCADE"), primary_key=True
     )
