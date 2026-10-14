@@ -7,6 +7,28 @@ from pydantic import BaseModel, ValidationError
 load_dotenv()
 client = OpenAI()
 
+SKILL_EXTRACTION_PROMPT = """You extract technical skills from a job description.
+
+Rule: a skill is a specific, named technology — a programming language, framework, library, database, cloud platform or service, tool, or platform — that someone could list under "Technical Skills" on a resume.
+
+Do NOT include:
+- Practices or methodologies: Agile, code review, test-driven development
+- Generic concepts: databases, APIs, cloud computing, microservices
+- Abilities or soft skills: communication, problem-solving, attention to detail
+
+Edge cases:
+- Include CI/CD and Linux and SQL and NoSQL. They are specific enough to be listed as skills.
+- Exclude Windows. Almost everyone uses it, so it says nothing about fit.
+
+Example:
+Description: "We're looking for a developer with strong Python and experience building REST APIs with FastAPI. You'll deploy to AWS using Docker and work in an Agile team. Excellent communication skills and familiarity with Linux and Windows environments are essential."
+Output: ["Python", "FastAPI", "AWS", "Docker", "Linux"]
+
+Output rules:
+- Return only the skill names, using their common spelling (e.g. "PostgreSQL", "Node.js").
+- No brackets, versions, qualifiers or explanations, e.g. "React", not "React (3+ years)".
+- List each skill once.
+"""
 
 class ExtractionFailed(Exception):
     pass
@@ -18,7 +40,7 @@ def extract_skills(description, llm_client=client):
         response = llm_client.responses.parse(
         text_format=ExtractedSkills,
         model = "gpt-5-mini",
-        instructions = "Extract only the technical skills explicitly mentioned in the job description (e.g., programming languages, frameworks, libraries, databases, cloud platforms, tools, APIs, and technologies), exclude all soft skills and non-technical requirements",
+        instructions = SKILL_EXTRACTION_PROMPT,
         input = description,
         )
 
@@ -28,7 +50,7 @@ def extract_skills(description, llm_client=client):
             response = llm_client.responses.parse(
             text_format=ExtractedSkills,
             model = "gpt-5-mini",
-            instructions = "Extract only the technical skills explicitly mentioned in the job description (e.g., programming languages, frameworks, libraries, databases, cloud platforms, tools, APIs, and technologies), exclude all soft skills and non-technical requirements",
+            instructions = SKILL_EXTRACTION_PROMPT,
             input = description,
             )
 
