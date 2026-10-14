@@ -1,1 +1,128 @@
 @import "tailwindcss";
+
+/* dark: utilities apply when <html> has class="dark" (set by theme.js), not straight from the OS setting. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Colour tokens. Components use names like bg-surface or text-muted;
+   the actual colours swap when .dark is on <html>. */
+:root {
+    --c-background: #fbf8ff;
+    --c-header: #ffffff;
+    --c-surface: #ffffff;
+    --c-surface-variant: #f4f1fb;
+    --c-border: #e6e3ee;
+    --c-text: #1b1b21;
+    --c-muted: #46464f;
+    --c-muted-2: #5c5c66;
+    --c-outline: #c6c5d0;
+    --c-track: #e6e3ee;
+    --c-primary: #3949c8;
+    --c-on-primary: #ffffff;
+    --c-primary-container: #dfe0ff;
+    --c-on-primary-container: #26339a;
+
+    /* Logo tile */
+    --c-logo-tile: #3949c8;
+    --c-logo-ink: #ffffff;
+    --c-logo-dot: #ffc94d;
+
+    /* Status chips: background / text */
+    --c-interview: #fde7c7;     --c-on-interview: #6b3d00;
+    --c-applied: #dfe0ff;       --c-on-applied: #26339a;
+    --c-considering: #f3dcff;   --c-on-considering: #4a2a5c;
+    --c-replied: #d7f0e0;       --c-on-replied: #1b5e36;
+    --c-rejected: #ffdad6;      --c-on-rejected: #93000a;
+    --c-ghosted: #e6e3ee;       --c-on-ghosted: #46464f;
+
+    /* Fit score: text / bar */
+    --c-fit-good: #1b6e3b;      --c-fit-good-bar: #2e8a50;
+    --c-fit-low: #8a5a00;       --c-fit-low-bar: #8a5a00;
+
+    /* Missing-skill chips */
+    --c-missing: #fbe3e0;       --c-on-missing: #7f1d1d;
+}
+
+.dark {
+    --c-background: #121318;
+    --c-header: #1b1b21;
+    --c-surface: #1f1f26;
+    --c-surface-variant: #26262e;
+    --c-border: #2c2c33;
+    --c-text: #e4e1e9;
+    --c-muted: #c6c5d0;
+    --c-muted-2: #a9a8b3;
+    --c-outline: #46464f;
+    --c-track: #34343c;
+    --c-primary: #bac3ff;
+    --c-on-primary: #0d1a75;
+    --c-primary-container: #2f3d9e;
+    --c-on-primary-container: #dfe0ff;
+
+    --c-logo-tile: #bac3ff;
+    --c-logo-ink: #0d1a75;
+    --c-logo-dot: #b26a00;
+
+    --c-interview: #5a3a00;     --c-on-interview: #ffddb1;
+    --c-applied: #2f3d9e;       --c-on-applied: #dfe0ff;
+    --c-considering: #4a2a5c;   --c-on-considering: #f3dcff;
+    --c-replied: #1d4a30;       --c-on-replied: #b8eccb;
+    --c-rejected: #73100c;      --c-on-rejected: #ffdad6;
+    --c-ghosted: #34343c;       --c-on-ghosted: #c6c5d0;
+
+    --c-fit-good: #7bd89a;      --c-fit-good-bar: #7bd89a;
+    --c-fit-low: #f5c26b;       --c-fit-low-bar: #f5c26b;
+
+    --c-missing: #5c1a1a;       --c-on-missing: #fbe3e0;
+}
+
+/* Turn the variables above into Tailwind colour names (bg-surface, text-on-primary, border-outline, ...). */
+@theme inline {
+    --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+
+    --color-background: var(--c-background);
+    --color-header: var(--c-header);
+    --color-surface: var(--c-surface);
+    --color-surface-variant: var(--c-surface-variant);
+    --color-border: var(--c-border);
+    --color-text: var(--c-text);
+    --color-muted: var(--c-muted);
+    --color-muted-2: var(--c-muted-2);
+    --color-outline: var(--c-outline);
+    --color-track: var(--c-track);
+    --color-primary: var(--c-primary);
+    --color-on-primary: var(--c-on-primary);
+    --color-primary-container: var(--c-primary-container);
+    --color-on-primary-container: var(--c-on-primary-container);
+
+    --color-logo-tile: var(--c-logo-tile);
+    --color-logo-ink: var(--c-logo-ink);
+    --color-logo-dot: var(--c-logo-dot);
+
+    --color-interview: var(--c-interview);       --color-on-interview: var(--c-on-interview);
+    --color-applied: var(--c-applied);           --color-on-applied: var(--c-on-applied);
+    --color-considering: var(--c-considering);   --color-on-considering: var(--c-on-considering);
+    --color-replied: var(--c-replied);           --color-on-replied: var(--c-on-replied);
+    --color-rejected: var(--c-rejected);         --color-on-rejected: var(--c-on-rejected);
+    --color-ghosted: var(--c-ghosted);           --color-on-ghosted: var(--c-on-ghosted);
+
+    --color-fit-good: var(--c-fit-good);         --color-fit-good-bar: var(--c-fit-good-bar);
+    --color-fit-low: var(--c-fit-low);           --color-fit-low-bar: var(--c-fit-low-bar);
+
+    --color-missing: var(--c-missing);           --color-on-missing: var(--c-on-missing);
+}
+
+/* The page's content column: centred, capped for readability, wider on big monitors.
+   Used by the header and every page, so the width is changed here only. */
+@utility page-width {
+    width: 100%;
+    margin-inline: auto;
+    max-width: 72rem;               /* ~1150px: laptops */
+    padding-inline: 1rem;
+    @media (width >= 40rem) { padding-inline: 1.5rem; }
+    @media (width >= 96rem) { max-width: 88rem; }    /* ~1400px on screens 1536px+ wide */
+}
+
+body {
+    background-color: var(--c-background);
+    color: var(--c-text);
+}
