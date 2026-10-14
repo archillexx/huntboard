@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { API_URL } from '../api'
 import { Header } from '../components/Header'
 import { PasswordInput } from '../components/PasswordInput'
@@ -30,6 +30,10 @@ export const AuthPage = ({ mode, onLogin }) => {   // mode: "login" or "signup",
     const [submitting, setSubmitting] = useState(false)
 
     const signup = mode === "signup"
+    const navigate = useNavigate()
+
+    // The code screen reads the email from the URL, so a refresh there doesn't lose it.
+    const goVerify = () => navigate(`/verify?email=${encodeURIComponent(email.trim().toLowerCase())}`)
 
     const submit = async (e) => {
         e.preventDefault()
@@ -42,7 +46,9 @@ export const AuthPage = ({ mode, onLogin }) => {   // mode: "login" or "signup",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ email, password }),
                 })
-                if (!response.ok) return setErrors(await errorsFrom(response))
+                // 502 = account created but the email didn't send: the code screen has Resend.
+                if (response.ok || response.status === 502) return goVerify()
+                return setErrors(await errorsFrom(response))
             }
 
             // The login route takes a form (username + password), not JSON: that's the OAuth2 standard.
@@ -50,6 +56,15 @@ export const AuthPage = ({ mode, onLogin }) => {   // mode: "login" or "signup",
                 method: "POST",
                 body: new URLSearchParams({ username: email, password }),
             })
+            // 403 = right password, email not verified yet: send a fresh code and go enter it.
+            if (response.status === 403) {
+                await fetch(`${API_URL}/auth/resend-code`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email }),
+                })
+                return goVerify()
+            }
             if (!response.ok) return setErrors(await errorsFrom(response))
 
             onLogin((await response.json()).access_token, email)

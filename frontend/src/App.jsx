@@ -4,6 +4,7 @@ import { ProtectedRoute } from './components/ProtectedRoute'
 import { AuthPage } from './pages/AuthPage'
 import { Dashboard } from './pages/Dashboard'
 import { Landing } from './pages/Landing'
+import { VerifyPage } from './pages/VerifyPage'
 
 const App = () => {
     const navigate = useNavigate()
@@ -34,6 +35,7 @@ const App = () => {
             <Route path="/" element={token ? <Navigate to="/jobs" replace /> : <Landing />} />
             <Route path="/login" element={authPage("login")} />
             <Route path="/signup" element={authPage("signup")} />
+            <Route path="/verify" element={token ? <Navigate to="/jobs" replace /> : <VerifyPage onLogin={login} />} />
             <Route path="/jobs" element={
                 <ProtectedRoute token={token}>
                     <Dashboard token={token} onLogout={logout} />
