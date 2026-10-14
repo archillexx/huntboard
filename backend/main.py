@@ -12,8 +12,10 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from codes import CodeRejected, check_code, issue_code, seconds_until_resend
 from database import SessionLocal
 from extraction import ExtractionFailed, extract_skills
+from mailer import EmailNotSent, send_email
 from models import Job, JobSkill, ProfileSkill, Skill, User
 from scoring import fit_score, most_missed_skills, normalise_skills
 
@@ -297,9 +299,23 @@ class SignupIn(BaseModel):
     password: str = Field(min_length=8)   # a basic floor; the hash can't save a weak password
 
 
+VERIFY_EMAIL = "verify_email"   # the purpose stored on verification codes
+
+
+def send_verification_code(db: Session, user: User) -> None:
+    """Make a code, save it, then email it. Saved first, so the code exists before anyone can type it."""
+    code = issue_code(db, user, VERIFY_EMAIL)
+    db.commit()
+    send_email(
+        user.email,
+        "Your Huntboard verification code",
+        f"Your code is {code}\n\nIt expires in 15 minutes. If you didn't sign up for Huntboard, ignore this email.",
+    )
+
+
 @app.post("/auth/signup", status_code=201)
 def signup(signup_in: SignupIn, db: Session = Depends(get_db)):
-    """Create an account. Stores only the Argon2 hash; the password itself is never saved."""
+    """Create an unverified account and email it a code. Stores only the Argon2 hash of the password."""
     email = signup_in.email.strip().lower()
     if db.scalar(select(User).where(User.email == email)) is not None:
         raise HTTPException(status_code=409, detail="An account with this email already exists")
@@ -307,9 +323,58 @@ def signup(signup_in: SignupIn, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
-    # Never send the hash back: the client has no use for it.
-    return {"userId": user.id, "email": user.email}
+    try:
+        send_verification_code(db, user)
+    except EmailNotSent:
+        # The account exists; the user can ask for the code again with Resend.
+        raise HTTPException(status_code=502, detail="Account created, but we couldn't send the code. Try Resend.")
+    # Never send the hash back: the client has no use for it. No token yet: verify first.
+    return {"userId": user.id, "email": user.email, "verified": False}
 
+
+class VerifyIn(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6)
+
+
+@app.post("/auth/verify")
+def verify_email(verify_in: VerifyIn, db: Session = Depends(get_db)):
+    """Check the emailed code. On success the account is verified and you're logged in."""
+    user = db.scalar(select(User).where(User.email == verify_in.email.strip().lower()))
+    # Unknown email: same reply as a wrong code, so this can't be used to find accounts.
+    if user is None:
+        raise HTTPException(status_code=400, detail="That code isn't right.")
+    if user.email_verified_at is not None:
+        raise HTTPException(status_code=400, detail="This email is already verified. Log in instead.")
+    try:
+        check_code(db, user, VERIFY_EMAIL, verify_in.code)
+    except CodeRejected as error:
+        db.commit()   # save the failed attempt first, or the 5-try limit never sticks
+        raise HTTPException(status_code=400, detail=str(error))
+    user.email_verified_at = datetime.now(timezone.utc)
+    db.commit()       # the code's used_at and the user's verification save together
+    return {"access_token": create_access_token(user.id), "token_type": "bearer"}
+
+
+class ResendIn(BaseModel):
+    email: EmailStr
+
+
+@app.post("/auth/resend-code")
+def resend_code(resend_in: ResendIn, db: Session = Depends(get_db)):
+    """Email a fresh code. Always the same reply, so it can't be used to check which emails have accounts."""
+    reply = {"detail": "If that account needs verifying, a new code is on its way."}
+    user = db.scalar(select(User).where(User.email == resend_in.email.strip().lower()))
+    if user is None or user.email_verified_at is not None:
+        return reply
+    # Inside the cooldown: quietly send nothing (the page also counts down before allowing Resend).
+    if seconds_until_resend(db, user, VERIFY_EMAIL) > 0:
+        return reply
+    try:
+        send_verification_code(db, user)
+    except EmailNotSent:
+        raise HTTPException(status_code=502, detail="We couldn't send the code. Try again in a minute.")
+    return reply
 
 
 @app.post("/auth/login")
@@ -325,4 +390,7 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
     # use this route to find out which emails have accounts.
     if user is None or not password_hasher.verify(form.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Wrong email or password")
+    # Checked only after the password is right, so it reveals nothing to someone guessing.
+    if user.email_verified_at is None:
+        raise HTTPException(status_code=403, detail="Verify your email first")
     return {"access_token": create_access_token(user.id), "token_type": "bearer"}

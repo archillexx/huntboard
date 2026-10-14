@@ -87,3 +87,26 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    # When the email was proven real by entering a code; NULL = not verified yet, so login is refused.
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class OneTimeCode(Base):
+    """A 6-digit code we emailed, e.g. to verify an email address. Stored hashed, like a password."""
+
+    __tablename__ = "one_time_codes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Deleting a user deletes their codes too.
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    # What the code is for: "verify_email" now, "reset_password" in 7b.5. One table, two uses.
+    purpose: Mapped[str]
+    code_hash: Mapped[str]
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Wrong guesses so far; the code stops working after a few, so it can't be guessed.
+    attempts: Mapped[int] = mapped_column(server_default="0")
+    # Set when the code is used, so the same code can't be used twice.
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
