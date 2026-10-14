@@ -78,8 +78,9 @@ TOKEN_LIFETIME = timedelta(hours=24)
 
 def create_access_token(user_id: int) -> str:
     """A signed token saying "this is user <id>", valid for TOKEN_LIFETIME."""
-    expires = datetime.now(timezone.utc) + TOKEN_LIFETIME
-    claims = {"sub": str(user_id), "exp": expires}   # sub = who; exp = when it stops working
+    now = datetime.now(timezone.utc)
+    # sub = who; iat = issued at (compared with password_changed_at); exp = when it stops working
+    claims = {"sub": str(user_id), "iat": now, "exp": now + TOKEN_LIFETIME}
     return jwt.encode(claims, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
@@ -105,6 +106,10 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise not_logged_in
     user = db.get(User, int(claims["sub"]))
     if user is None:   # a valid token for an account that has since been deleted
+        raise not_logged_in
+    # Issued before the last password change? Then it belongs to an old session: refuse it.
+    # (Whole seconds on both sides, so the token handed out by the change itself still works.)
+    if user.password_changed_at is not None and claims.get("iat", 0) < int(user.password_changed_at.timestamp()):
         raise not_logged_in
     return user
 
@@ -375,6 +380,23 @@ def resend_code(resend_in: ResendIn, db: Session = Depends(get_db)):
     except EmailNotSent:
         raise HTTPException(status_code=502, detail="We couldn't send the code. Try again in a minute.")
     return reply
+
+
+class ChangePasswordIn(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8)
+
+
+@app.post("/auth/change-password")
+def change_password(change_in: ChangePasswordIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Change your password. Every other session is logged out; this one gets a fresh token."""
+    # Asking for the current password stops someone at an unlocked laptop from taking over the account.
+    if not password_hasher.verify(change_in.current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Your current password is wrong")
+    user.password_hash = password_hasher.hash(change_in.new_password)
+    user.password_changed_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"access_token": create_access_token(user.id), "token_type": "bearer"}
 
 
 @app.post("/auth/login")

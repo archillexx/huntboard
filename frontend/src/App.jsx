@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Navigate, Route, Routes, useNavigate } from 'react-router'
 import { ProtectedRoute } from './components/ProtectedRoute'
+import { AccountPage } from './pages/AccountPage'
 import { AuthPage } from './pages/AuthPage'
 import { Dashboard } from './pages/Dashboard'
 import { Landing } from './pages/Landing'
@@ -13,10 +14,15 @@ const App = () => {
     const [token, setToken] = useState(() => localStorage.getItem("token"))
 
     // The email is kept only to show your initial in the header; the token is what proves who you are.
-    const login = (newToken, email) => {
+    // Swap in a new token without leaving the page (used after changing your password).
+    const saveToken = (newToken) => {
         localStorage.setItem("token", newToken)
-        localStorage.setItem("email", email.trim().toLowerCase())
         setToken(newToken)
+    }
+
+    const login = (newToken, email) => {
+        localStorage.setItem("email", email.trim().toLowerCase())
+        saveToken(newToken)
         navigate("/jobs")
     }
 
@@ -39,6 +45,11 @@ const App = () => {
             <Route path="/jobs" element={
                 <ProtectedRoute token={token}>
                     <Dashboard token={token} onLogout={logout} />
+                </ProtectedRoute>
+            } />
+            <Route path="/account" element={
+                <ProtectedRoute token={token}>
+                    <AccountPage token={token} onLogout={logout} onNewToken={saveToken} />
                 </ProtectedRoute>
             } />
             <Route path="*" element={<Navigate to="/" replace />} />

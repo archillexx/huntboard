@@ -89,6 +89,9 @@ class User(Base):
     )
     # When the email was proven real by entering a code; NULL = not verified yet, so login is refused.
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # When the password last changed (or was reset). Tokens issued before this are refused,
+    # which is how changing your password logs out every other session.
+    password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class OneTimeCode(Base):

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router'
 import { makeApi } from '../api'
 import { AddJobSheet } from '../components/AddJobSheet'
 import { GapList } from '../components/GapList'
@@ -159,9 +160,12 @@ export const Dashboard = ({ token, onLogout }) => {
         <div className="min-h-screen bg-background">
             <Header>
                 {email && (
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-container text-sm font-extrabold text-on-primary-container" title={email} aria-label={`Signed in as ${email}`} role="img">
-                        {email[0].toUpperCase()}
-                    </span>
+                    <Link to="/account" title={email} aria-label={`Account settings for ${email}`}
+                        className="flex h-11 w-11 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-primary">
+                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-container text-sm font-extrabold text-on-primary-container hover:opacity-90">
+                            {email[0].toUpperCase()}
+                        </span>
+                    </Link>
                 )}
                 <button className="min-h-11 rounded-full border border-outline px-4 text-sm font-bold text-text hover:bg-surface-variant focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" onClick={onLogout}>
                     Log out
