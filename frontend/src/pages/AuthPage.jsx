@@ -99,6 +99,11 @@ export const AuthPage = ({ mode, onLogin }) => {   // mode: "login" or "signup",
                         {errors.password
                             ? <p id="password-error" className="mt-1.5 text-sm text-on-missing">{errors.password}</p>
                             : signup && <p id="password-hint" className="mt-1.5 text-sm text-muted-2">At least 8 characters.</p>}
+                        {!signup && (
+                            <Link to="/forgot-password" className="mt-1 inline-flex min-h-11 items-center text-sm font-bold text-primary hover:underline">
+                                Forgot password?
+                            </Link>
+                        )}
                     </div>
 
                     {errors.form && <p className="mt-4 rounded-xl bg-missing px-3.5 py-2.5 text-sm font-bold text-on-missing" role="alert">{errors.form}</p>}

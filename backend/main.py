@@ -304,18 +304,21 @@ class SignupIn(BaseModel):
     password: str = Field(min_length=8)   # a basic floor; the hash can't save a weak password
 
 
-VERIFY_EMAIL = "verify_email"   # the purpose stored on verification codes
+VERIFY_EMAIL = "verify_email"       # the purposes stored on one-time codes: a code made
+RESET_PASSWORD = "reset_password"   # for one job can never be used for the other
+
+CODE_EMAILS = {
+    VERIFY_EMAIL: ("Your Huntboard verification code", "If you didn't sign up for Huntboard, ignore this email."),
+    RESET_PASSWORD: ("Reset your Huntboard password", "If you didn't ask to reset your password, ignore this email; your password hasn't changed."),
+}
 
 
-def send_verification_code(db: Session, user: User) -> None:
+def send_code(db: Session, user: User, purpose: str) -> None:
     """Make a code, save it, then email it. Saved first, so the code exists before anyone can type it."""
-    code = issue_code(db, user, VERIFY_EMAIL)
+    code = issue_code(db, user, purpose)
     db.commit()
-    send_email(
-        user.email,
-        "Your Huntboard verification code",
-        f"Your code is {code}\n\nIt expires in 15 minutes. If you didn't sign up for Huntboard, ignore this email.",
-    )
+    subject, footer = CODE_EMAILS[purpose]
+    send_email(user.email, subject, f"Your code is {code}\n\nIt expires in 15 minutes. {footer}")
 
 
 @app.post("/auth/signup", status_code=201)
@@ -329,7 +332,7 @@ def signup(signup_in: SignupIn, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
     try:
-        send_verification_code(db, user)
+        send_code(db, user, VERIFY_EMAIL)
     except EmailNotSent:
         # The account exists; the user can ask for the code again with Resend.
         raise HTTPException(status_code=502, detail="Account created, but we couldn't send the code. Try Resend.")
@@ -376,7 +379,7 @@ def resend_code(resend_in: ResendIn, db: Session = Depends(get_db)):
     if seconds_until_resend(db, user, VERIFY_EMAIL) > 0:
         return reply
     try:
-        send_verification_code(db, user)
+        send_code(db, user, VERIFY_EMAIL)
     except EmailNotSent:
         raise HTTPException(status_code=502, detail="We couldn't send the code. Try again in a minute.")
     return reply
@@ -395,6 +398,50 @@ def change_password(change_in: ChangePasswordIn, db: Session = Depends(get_db), 
         raise HTTPException(status_code=400, detail="Your current password is wrong")
     user.password_hash = password_hasher.hash(change_in.new_password)
     user.password_changed_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"access_token": create_access_token(user.id), "token_type": "bearer"}
+
+
+class ForgotPasswordIn(BaseModel):
+    email: EmailStr
+
+
+@app.post("/auth/forgot-password")
+def forgot_password(forgot_in: ForgotPasswordIn, db: Session = Depends(get_db)):
+    """Email a reset code. Same reply whether or not the account exists (no user enumeration)."""
+    reply = {"detail": "If an account uses that email, a reset code is on its way."}
+    user = db.scalar(select(User).where(User.email == forgot_in.email.strip().lower()))
+    if user is None or seconds_until_resend(db, user, RESET_PASSWORD) > 0:
+        return reply
+    try:
+        send_code(db, user, RESET_PASSWORD)
+    except EmailNotSent:
+        raise HTTPException(status_code=502, detail="We couldn't send the code. Try again in a minute.")
+    return reply
+
+
+class ResetPasswordIn(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6)
+    new_password: str = Field(min_length=8)
+
+
+@app.post("/auth/reset-password")
+def reset_password(reset_in: ResetPasswordIn, db: Session = Depends(get_db)):
+    """Set a new password using an emailed code. Logs out every session and logs you in fresh."""
+    user = db.scalar(select(User).where(User.email == reset_in.email.strip().lower()))
+    if user is None:
+        raise HTTPException(status_code=400, detail="That code isn't right.")
+    try:
+        check_code(db, user, RESET_PASSWORD, reset_in.code)
+    except CodeRejected as error:
+        db.commit()   # save the failed attempt first, or the 5-try limit never sticks
+        raise HTTPException(status_code=400, detail=str(error))
+    now = datetime.now(timezone.utc)
+    user.password_hash = password_hasher.hash(reset_in.new_password)
+    user.password_changed_at = now      # every old token stops working
+    if user.email_verified_at is None:  # getting the code proves they own the inbox
+        user.email_verified_at = now
     db.commit()
     return {"access_token": create_access_token(user.id), "token_type": "bearer"}
 
