@@ -36,3 +36,7 @@ def test_profile_skills_are_per_user(client):
 
     assert client.get("/profile/skills", headers=alice).json() == {"skills": ["python"]}
     assert client.get("/profile/skills", headers=bob).json() == {"skills": ["java"]}
+
+
+def test_health_needs_no_login(client):
+    assert client.get("/health").json() == {"status": "ok"}

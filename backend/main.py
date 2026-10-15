@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pwdlib import PasswordHash
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session
 
 from codes import CodeRejected, check_code, issue_code, seconds_until_resend
@@ -221,6 +221,13 @@ def job_response(db: Session, job: Job) -> dict:
     """job_to_api with the job's own skills and its owner's profile."""
     skills = job_skill_names(db, job.user_id, job.id).get(job.id, [])
     return job_to_api(job, skills, profile_skill_names(db, job.user_id))
+
+
+@app.get("/health")
+def health(db: Session = Depends(get_db)):
+    """For Render: "is the app up, and can it reach the database?" No login needed, no data returned."""
+    db.execute(text("SELECT 1"))   # fails (500) if the database is unreachable
+    return {"status": "ok"}
 
 
 @app.get("/jobs")
