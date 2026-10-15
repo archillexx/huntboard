@@ -22,9 +22,17 @@ from scoring import fit_score, most_missed_skills, normalise_skills
 app = FastAPI()
 
 # Let the React dev server (a different origin) read this API's responses.
+# Which websites may call this API from a browser (CORS). Comma-separated in the environment,
+# so localhost, a local preview and the live site can each be allowed without code changes.
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["GET", "POST", "PATCH", "PUT"],
     allow_headers=["Content-Type", "Authorization"],  # Authorization carries the login token
 )
