@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Text, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database import Base
@@ -16,6 +16,9 @@ class Job(Base):
             "job_status IN ('Considering', 'Applied', 'Replied', 'Interview', 'Rejected', 'Ghosted')",
             name="job_status_allowed",
         ),
+        # The same posting can't be saved twice by the same user. NULLs don't clash in Postgres,
+        # so jobs added by hand (no URL) are unaffected; two different users can save the same URL.
+        UniqueConstraint("user_id", "job_url", name="jobs_user_job_url_unique"),
     )  
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -34,6 +37,10 @@ class Job(Base):
     # Who owns this job. Every query filters on it, so users only ever see their own jobs.
     # index=True: "all jobs WHERE user_id = ?" runs on every request, so look it up fast.
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    # Where the posting lives (set when saved from the browser extension). Optional for hand-added jobs.
+    job_url: Mapped[str | None] = mapped_column(Text)
+    # e.g. "Brisbane, QLD". Optional: hand-added jobs and some postings don't say.
+    location: Mapped[str | None]
 
 
 class Skill(Base):

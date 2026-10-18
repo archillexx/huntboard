@@ -22,6 +22,12 @@ The goal of this project is to learn the AI core deeply. AI builds the applicati
 
 For anything in the list above, AI may explain concepts, suggest approaches, or review code that I write, but I will write the implementation myself.
 
+### Exception: Section 8c (browser extension), decided 2026-10-18
+- AI may write all of 8c, including the job-posting extraction (prompt, Pydantic schema, LLM call, retry handling), field normalisation, and the evaluation.
+- In return, AI walks me through the core logic in depth before I commit, and I must be able to explain it: the extraction prompt and schema, the JSON-LD → selection → page-text fallback, the needs-review rule, and how the eval scores precision and recall.
+- The golden pages and their expected answers (backend/tests/fixtures/pages/) stay mine to collect and write.
+- Everything outside 8c keeps the rules above.
+
 ## Understanding what AI writes
 
 - Explain every non-obvious decision in plain terms, especially database schema (keys, relationships), joins, transactions, async code, and auth flow.

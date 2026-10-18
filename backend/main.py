@@ -18,6 +18,7 @@ from extraction import ExtractionFailed, extract_skills
 from mailer import EmailNotSent, send_email
 from models import Job, JobSkill, ProfileSkill, Skill, User
 from scoring import fit_score, most_missed_skills, normalise_skills
+from urls import canonical_job_url
 
 app = FastAPI()
 
@@ -56,6 +57,8 @@ class JobIn(BaseModel):
     jobStatus: JobStatus = "Applied"
     jobDescription: str | None = None
     resumeText: str | None = None
+    jobUrl: str | None = Field(default=None, max_length=2000)   # set by the browser extension
+    location: str | None = None
 
 
 class SkillsIn(BaseModel):
@@ -177,6 +180,8 @@ def job_to_api(job: Job, job_skills: list[str], my_skills: list[str]) -> dict:
         "fitScore": score,
         "missingSkills": missing,
         "extractionStatus": job.extraction_status,
+        "jobUrl": job.job_url,
+        "location": job.location,
     }
 
 
@@ -240,6 +245,14 @@ def list_jobs(db: Session = Depends(get_db), user: User = Depends(get_current_us
 
 @app.post("/jobs", status_code=201)
 def create_job(job_in: JobIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    # One standard form per posting, so tracking parameters can't create duplicates.
+    job_url = canonical_job_url(job_in.jobUrl) if job_in.jobUrl else None
+    # Already saved this posting? Say so (409) and point at the existing job instead of a copy.
+    # The database's unique constraint is the real guarantee; this check gives a friendly reply.
+    if job_url is not None:
+        existing = db.scalar(select(Job).where(Job.user_id == user.id, Job.job_url == job_url))
+        if existing is not None:
+            raise HTTPException(status_code=409, detail={"message": "You already saved this job", "jobId": existing.id})
     job = Job(
         company_name=job_in.companyName,
         job_role=job_in.jobRole,
@@ -247,6 +260,8 @@ def create_job(job_in: JobIn, db: Session = Depends(get_db), user: User = Depend
         # A blank box arrives as "" after stripping; store it as NULL ("not pasted").
         job_description=job_in.jobDescription or None,
         resume_text=job_in.resumeText or None,
+        job_url=job_url,
+        location=job_in.location or None,
         user_id=user.id,   # the owner comes from the token, never from the request body
     )
     db.add(job)
