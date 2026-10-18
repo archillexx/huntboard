@@ -30,7 +30,8 @@ export const JobCard = ({ job, onStatusChange, onRetry, onOpen }) => {
                     <h3 className="truncate text-lg font-extrabold text-text">
                         <button className="text-left after:absolute after:inset-0 after:rounded-[20px] focus:outline-none" onClick={() => onOpen(job.jobId)}>{job.jobRole}</button>
                     </h3>
-                    <p className="truncate text-sm text-muted-2">{job.companyName}</p>
+                    <p className="truncate text-sm text-muted-2">{job.companyName}{job.location && ` · ${job.location}`}</p>
+                    {job.salary && <p className="truncate text-xs font-bold text-muted">{job.salary}</p>}
                 </div>
                 <StatusChip status={job.jobStatus} />
             </div>

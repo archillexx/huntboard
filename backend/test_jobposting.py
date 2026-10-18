@@ -34,7 +34,7 @@ class FakeClient:
 
 
 POSTING = {"company": "Riverside Bakery", "role": "Head Pastry Chef", "location": "Hobart, TAS",
-           "description": "Lead our pastry kitchen."}
+           "salary": "$70,000 – $80,000 + super", "description": "Lead our pastry kitchen."}
 
 
 # ---------- 1. structured data ----------
@@ -160,3 +160,32 @@ def test_company_legal_suffixes_are_trimmed():
     assert normalise_company("Quartex Software Pty Ltd") == "Quartex Software"
     assert normalise_company("Acme Limited") == "Acme"
     assert normalise_company("TechnologyOne") == "TechnologyOne"
+
+
+# ---------- 5. salary ----------
+
+def test_json_ld_salary_range_is_formatted():
+    blocks = [{"@type": "JobPosting", "title": "Dev", "hiringOrganization": {"name": "Acme"},
+               "baseSalary": {"@type": "MonetaryAmount", "currency": "AUD",
+                              "value": {"minValue": 79000, "maxValue": 80000, "unitText": "YEAR"}}}]
+    assert job_from_json_ld(blocks)["salary"] == "AUD 79,000–80,000 per year"
+
+
+def test_json_ld_single_salary_and_missing_salary():
+    one = [{"@type": "JobPosting", "title": "Dev", "hiringOrganization": "Acme",
+            "baseSalary": {"currency": "AUD", "value": {"value": 650, "unitText": "DAY"}}}]
+    none = [{"@type": "JobPosting", "title": "Dev", "hiringOrganization": "Acme"}]
+    assert job_from_json_ld(one)["salary"] == "AUD 650 per day"
+    assert job_from_json_ld(none)["salary"] is None
+
+
+def test_ai_salary_comes_through_as_written():
+    job = read_job_page(None, page_text="page", llm_client=FakeClient([POSTING]))
+    assert job["salary"] == "$70,000 – $80,000 + super"
+
+
+def test_salary_is_saved_and_returned(client):
+    headers = login_as(client, "kit@example.com")
+    job = client.post("/jobs", headers=headers, json={
+        "companyName": "Acme", "jobRole": "Dev", "salary": "$90k + super"}).json()
+    assert job["salary"] == "$90k + super"

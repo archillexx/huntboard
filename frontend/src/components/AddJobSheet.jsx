@@ -10,6 +10,8 @@ export const AddJobSheet = ({ onSave, onClose }) => {
     const dialogRef = useRef(null)
     const [companyName, setCompanyName] = useState("")
     const [jobRole, setJobRole] = useState("")
+    const [location, setLocation] = useState("")
+    const [salary, setSalary] = useState("")
     const [jobStatus, setJobStatus] = useState("Applied")
     const [jobDescription, setJobDescription] = useState("")
     const [resumeText, setResumeText] = useState("")
@@ -37,7 +39,7 @@ export const AddJobSheet = ({ onSave, onClose }) => {
         setError("")
         setSaving(true)
         try {
-            const saved = await onSave({ companyName, jobRole, jobStatus, jobDescription, resumeText })
+            const saved = await onSave({ companyName, jobRole, location, salary, jobStatus, jobDescription, resumeText })
             if (saved) close()
             else setError("Couldn't save this job. Check the fields and try again.")
         } catch {
@@ -70,6 +72,16 @@ export const AddJobSheet = ({ onSave, onClose }) => {
                     <div>
                         <label htmlFor="add-role" className={labelClass}>Role</label>
                         <input id="add-role" className={fieldClass} type="text" value={jobRole} onChange={(e) => setJobRole(e.target.value)} />
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                            <label htmlFor="add-location" className={labelClass}>Location</label>
+                            <input id="add-location" className={fieldClass} type="text" placeholder="e.g. Sydney, NSW" value={location} onChange={(e) => setLocation(e.target.value)} />
+                        </div>
+                        <div>
+                            <label htmlFor="add-salary" className={labelClass}>Salary</label>
+                            <input id="add-salary" className={fieldClass} type="text" placeholder="If the ad states one" value={salary} onChange={(e) => setSalary(e.target.value)} />
+                        </div>
                     </div>
                     <div>
                         <label htmlFor="add-status" className={labelClass}>Status</label>

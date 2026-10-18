@@ -129,6 +129,7 @@ function fillForm(job) {
   $("company").value = job.companyName ?? ""
   $("role").value = job.jobRole ?? ""
   $("location").value = job.location ?? ""
+  $("salary").value = job.salary ?? ""
   $("description").value = job.jobDescription ?? ""
   const sources = { json_ld: "(from the page's structured data)", selection: "(from your selection)", page: "(read by AI)" }
   $("source").textContent = sources[job.source] ?? ""
@@ -151,6 +152,7 @@ $("job-view").addEventListener("submit", async (e) => {
         companyName: $("company").value,
         jobRole: $("role").value,
         location: $("location").value,
+        salary: $("salary").value,
         jobStatus: $("job-status").value,
         jobDescription: $("description").value,
         jobUrl: currentJobUrl,

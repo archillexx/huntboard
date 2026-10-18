@@ -37,7 +37,8 @@ export const JobDetailDialog = ({ job, onClose, onSkillsSave, onDelete }) => {
                 <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                         <h2 id="job-detail-title" className="text-2xl font-extrabold">{job.jobRole}</h2>
-                        <p className="text-muted-2">{job.companyName}</p>
+                        <p className="text-muted-2">{job.companyName}{job.location && ` · ${job.location}`}</p>
+                        {job.salary && <p className="mt-1 text-sm font-bold text-muted">{job.salary}</p>}
                     </div>
                     <button onClick={() => dialogRef.current.close()} aria-label="Close"
                         className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted hover:bg-surface-variant focus-visible:outline-2 focus-visible:outline-primary">

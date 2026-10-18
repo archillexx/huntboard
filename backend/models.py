@@ -41,6 +41,9 @@ class Job(Base):
     job_url: Mapped[str | None] = mapped_column(Text)
     # e.g. "Brisbane, QLD". Optional: hand-added jobs and some postings don't say.
     location: Mapped[str | None]
+    # As the ad states it ("AUD 79,000–80,000 per year", "$90k + super"). Text, not numbers:
+    # ads write pay in too many shapes to parse reliably, and showing it is all we need for now.
+    salary: Mapped[str | None]
 
 
 class Skill(Base):

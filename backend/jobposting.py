@@ -51,6 +51,30 @@ def _location_from(job_location) -> str | None:
     return None
 
 
+PERIODS = {"YEAR": "per year", "MONTH": "per month", "WEEK": "per week", "DAY": "per day", "HOUR": "per hour"}
+
+
+def _salary_from(base_salary) -> str | None:
+    """schema.org MonetaryAmount -> "AUD 79,000–80,000 per year". None if it isn't there or makes no sense."""
+    if not isinstance(base_salary, dict):
+        return None
+    currency = base_salary.get("currency") or ""
+    value = base_salary.get("value")
+    if isinstance(value, (int, float)):
+        low = high = value
+        period = ""
+    elif isinstance(value, dict):
+        low = value.get("minValue", value.get("value"))
+        high = value.get("maxValue", low)
+        period = PERIODS.get(str(value.get("unitText", "")).upper(), "")
+    else:
+        return None
+    if not isinstance(low, (int, float)):
+        return None
+    amount = f"{low:,.0f}" if high in (None, low) or not isinstance(high, (int, float)) else f"{low:,.0f}–{high:,.0f}"
+    return " ".join(part for part in (currency, amount, period) if part)
+
+
 def job_from_json_ld(blocks) -> dict | None:
     """The first JobPosting with a title and a company, as job fields; None if there isn't one."""
     for posting in _find_job_postings(blocks or []):
@@ -62,6 +86,7 @@ def job_from_json_ld(blocks) -> dict | None:
                 "company": company.strip(),
                 "role": role.strip(),
                 "location": _location_from(posting.get("jobLocation")),
+                "salary": _salary_from(posting.get("baseSalary")),
                 "description": html_to_text(posting.get("description") or "") or None,
             }
     return None
@@ -104,6 +129,7 @@ class ExtractedPosting(BaseModel):
     company: str | None
     role: str | None
     location: str | None
+    salary: str | None
     description: str | None
 
 
@@ -118,6 +144,9 @@ Return:
 - role: the job title exactly as the advertisement writes it.
 - location: city and state or region, e.g. "Sydney, NSW" or "Melbourne, VIC". Include "Remote" only if the
   job is fully remote. Null if not stated.
+- salary: the pay the employer states in the advertisement, as written, e.g. "$90,000 – $100,000 + super" or
+  "$650 per day". Null if the ad doesn't state one. Never use a job board's estimated or "typical" salary,
+  salary insights or comparison widgets — only the employer's own figure.
 - description: the posting's own text — responsibilities, requirements, about the role — copied as written,
   without page clutter or other jobs.
 
@@ -133,7 +162,7 @@ Example input:
  © 2026 JobSite"
 
 Example output:
-{"company": "Riverside Bakery", "role": "Head Pastry Chef", "location": "Hobart, TAS",
+{"company": "Riverside Bakery", "role": "Head Pastry Chef", "location": "Hobart, TAS", "salary": null,
  "description": "We're looking for a Head Pastry Chef to lead our pastry kitchen. You'll need laminated dough experience."}
 """
 

@@ -60,6 +60,7 @@ class JobIn(BaseModel):
     resumeText: str | None = None
     jobUrl: str | None = Field(default=None, max_length=2000)   # set by the browser extension
     location: str | None = None
+    salary: str | None = Field(default=None, max_length=200)
 
 
 class SkillsIn(BaseModel):
@@ -183,6 +184,7 @@ def job_to_api(job: Job, job_skills: list[str], my_skills: list[str]) -> dict:
         "extractionStatus": job.extraction_status,
         "jobUrl": job.job_url,
         "location": job.location,
+        "salary": job.salary,
     }
 
 
@@ -272,6 +274,7 @@ def parse_page(page_in: PageIn, db: Session = Depends(get_db), user: User = Depe
         "companyName": fields["company"],
         "jobRole": fields["role"],
         "location": fields["location"],
+        "salary": fields["salary"],
         "jobDescription": fields["description"],
         "source": fields["source"],
         "alreadySavedJobId": None,
@@ -297,6 +300,7 @@ def create_job(job_in: JobIn, db: Session = Depends(get_db), user: User = Depend
         resume_text=job_in.resumeText or None,
         job_url=job_url,
         location=job_in.location or None,
+        salary=job_in.salary or None,
         user_id=user.id,   # the owner comes from the token, never from the request body
     )
     db.add(job)
