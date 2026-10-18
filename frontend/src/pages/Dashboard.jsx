@@ -117,6 +117,15 @@ export const Dashboard = ({ token, onLogout }) => {
         loadGaps()
     }
 
+    // Delete on the server first; only remove the card once it's really gone. True = deleted.
+    const deleteJob = async (jobId) => {
+        const response = await api(`/jobs/${jobId}`, { method: "DELETE" })
+        if (!response.ok) return false
+        setJobs((jobs) => jobs.filter((job) => job.jobId !== jobId))
+        loadGaps()   // its skills no longer count towards your gaps
+        return true
+    }
+
     // My skills change every job's score, so reload all the jobs after saving.
     const saveMySkills = async (skillList) => {
         const response = await api(`/profile/skills`, {
@@ -249,7 +258,7 @@ export const Dashboard = ({ token, onLogout }) => {
             </main>
 
             {addOpen && <AddJobSheet onSave={addJob} onClose={() => setAddOpen(false)} />}
-            {openJob && <JobDetailDialog job={openJob} onClose={() => setOpenJobId(null)} onSkillsSave={saveJobSkills} />}
+            {openJob && <JobDetailDialog job={openJob} onClose={() => setOpenJobId(null)} onSkillsSave={saveJobSkills} onDelete={deleteJob} />}
         </div>
     )
 }

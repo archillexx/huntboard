@@ -35,7 +35,7 @@ ALLOWED_ORIGINS = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_methods=["GET", "POST", "PATCH", "PUT"],
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
     allow_headers=["Content-Type", "Authorization"],  # Authorization carries the login token
 )
 
@@ -306,6 +306,16 @@ def create_job(job_in: JobIn, db: Session = Depends(get_db), user: User = Depend
         run_extraction(db, job)
         db.refresh(job)
     return job_response(db, job)
+
+
+@app.delete("/jobs/{job_id}", status_code=204)
+def delete_job(job_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Delete one of your jobs. Its skill links go with it (ON DELETE CASCADE in the database).
+    Someone else's job gets 404, exactly like a job that doesn't exist."""
+    job = get_own_job(db, job_id, user)
+    db.delete(job)
+    db.commit()
+    # 204 = done, nothing to send back
 
 
 @app.patch("/jobs/{job_id}")

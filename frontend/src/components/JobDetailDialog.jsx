@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { FitScore } from './FitScore'
 import { SkillChip } from './SkillChip'
 import { SkillsEditor } from './SkillsEditor'
@@ -6,8 +6,19 @@ import { StatusChip } from './StatusChip'
 
 // The full view of one job. Built on the browser's <dialog>: showModal() dims the page,
 // keeps keyboard focus inside, and closes on Esc (which fires onClose).
-export const JobDetailDialog = ({ job, onClose, onSkillsSave }) => {
+export const JobDetailDialog = ({ job, onClose, onSkillsSave, onDelete }) => {
     const dialogRef = useRef(null)
+    const [confirming, setConfirming] = useState(false)   // two steps, so one stray click can't delete
+    const [deleting, setDeleting] = useState(false)
+
+    const deleteJob = async () => {
+        setDeleting(true)
+        try {
+            if (await onDelete(job.jobId)) dialogRef.current.close()
+        } finally {
+            setDeleting(false)
+        }
+    }
 
     // Open it once it's on the page. The check matters in dev: StrictMode runs effects twice.
     useEffect(() => {
@@ -64,12 +75,37 @@ export const JobDetailDialog = ({ job, onClose, onSkillsSave }) => {
                     </section>
                 )}
 
+                {job.jobUrl && (
+                    <a href={job.jobUrl} target="_blank" rel="noreferrer" className="mt-4 inline-flex min-h-11 items-center text-sm font-bold text-primary hover:underline">
+                        Open the original posting ↗
+                    </a>
+                )}
+
                 {job.resumeText && (
                     <details className="mt-4 text-sm">
                         <summary className="min-h-11 cursor-pointer content-center font-bold text-primary">Resume sent</summary>
                         <p className="mt-2 max-h-64 overflow-y-auto whitespace-pre-line rounded-xl bg-surface-variant p-4 text-muted">{job.resumeText}</p>
                     </details>
                 )}
+
+                <div className="mt-8 border-t border-border pt-5">
+                    {confirming ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                            <p className="mr-auto text-sm font-bold text-on-missing">Delete this job? This can't be undone.</p>
+                            <button onClick={() => setConfirming(false)} disabled={deleting}
+                                className="min-h-11 rounded-full px-4 text-sm font-bold text-muted hover:bg-surface-variant disabled:opacity-50">Cancel</button>
+                            <button onClick={deleteJob} disabled={deleting}
+                                className="min-h-11 rounded-full bg-missing px-4 text-sm font-bold text-on-missing hover:opacity-90 disabled:opacity-50">
+                                {deleting ? "Deleting…" : "Yes, delete"}
+                            </button>
+                        </div>
+                    ) : (
+                        <button onClick={() => setConfirming(true)}
+                            className="min-h-11 rounded-full px-4 text-sm font-bold text-on-missing hover:bg-missing focus-visible:outline-2 focus-visible:outline-primary">
+                            Delete job
+                        </button>
+                    )}
+                </div>
             </div>
         </dialog>
     )
