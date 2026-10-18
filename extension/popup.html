@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <strong>Hunt<span class="accent">board</span></strong>
+    <button id="logout" class="link" hidden>Log out</button>
+  </header>
+
+  <!-- Firefox only: host permissions are opt-in, so ask once -->
+  <div id="permission-view" hidden>
+    <p class="muted">Huntboard needs permission to talk to its server to save jobs.</p>
+    <button id="grant" class="primary">Allow</button>
+  </div>
+
+  <!-- Shown when there's no saved login token -->
+  <form id="login-view" hidden>
+    <p class="muted">Log in with your Huntboard account.</p>
+    <label for="email">Email</label>
+    <input id="email" type="email" autocomplete="email" required />
+    <label for="password">Password</label>
+    <input id="password" type="password" autocomplete="current-password" required />
+    <button type="submit" class="primary">Log in</button>
+  </form>
+
+  <!-- Messages: reading the page, errors, "already saved", "saved" -->
+  <p id="status" class="muted" hidden></p>
+
+  <!-- The pre-filled job, for you to check before saving -->
+  <form id="job-view" hidden>
+    <label for="company">Company</label>
+    <input id="company" placeholder="Not found — type it in" required />
+    <label for="role">Role</label>
+    <input id="role" required />
+    <label for="location">Location</label>
+    <input id="location" placeholder="Not stated" />
+    <label for="job-status">Status</label>
+    <select id="job-status">
+      <option>Considering</option>
+      <option selected>Applied</option>
+      <option>Replied</option>
+      <option>Interview</option>
+      <option>Rejected</option>
+      <option>Ghosted</option>
+    </select>
+    <details>
+      <summary>Description <span id="source" class="muted"></span></summary>
+      <textarea id="description" rows="8"></textarea>
+    </details>
+    <button type="submit" class="primary" id="save">Save to Huntboard</button>
+  </form>
+
+  <script src="popup.js"></script>
+</body>
+</html>

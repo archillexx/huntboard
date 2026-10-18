@@ -1,0 +1,37 @@
+/* Small popup in Huntboard's colours. Chrome sizes the popup to its content (max ~800x600). */
+:root {
+  --bg: #fbf8ff; --surface: #ffffff; --text: #1b1b21; --muted: #5c5c66;
+  --outline: #c6c5d0; --primary: #3949c8; --on-primary: #ffffff; --error: #93000a;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121318; --surface: #1f1f26; --text: #e4e1e9; --muted: #a9a8b3;
+    --outline: #46464f; --primary: #bac3ff; --on-primary: #0d1a75; --error: #ffb4ab;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  width: 340px; margin: 0; padding: 14px 16px 16px;
+  font: 14px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--text);
+}
+header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 16px; }
+.accent { color: var(--primary); }
+label { display: block; margin: 10px 0 4px; font-weight: 700; font-size: 12px; }
+input, select, textarea {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--outline); border-radius: 10px;
+  background: var(--surface); color: var(--text); font: inherit;
+}
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); border-color: var(--primary); }
+textarea { resize: vertical; font-size: 12px; }
+details { margin-top: 10px; }
+summary { cursor: pointer; font-weight: 700; font-size: 12px; }
+button { font: inherit; cursor: pointer; }
+.primary {
+  width: 100%; margin-top: 14px; padding: 10px; border: 0; border-radius: 999px;
+  background: var(--primary); color: var(--on-primary); font-weight: 700;
+}
+.primary:disabled { opacity: 0.6; cursor: default; }
+.link { border: 0; background: none; color: var(--primary); font-weight: 700; padding: 4px; }
+.muted { color: var(--muted); }
+.error { color: var(--error); font-weight: 700; }
+a { color: var(--primary); font-weight: 700; }
