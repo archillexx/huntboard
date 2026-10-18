@@ -1,5 +1,6 @@
 // The Huntboard popup: log in, read the current tab, show the job for checking, save it.
-// For local testing, switch API_URL to "http://127.0.0.1:8000" (allowed in manifest.json too).
+// For local testing, switch API_URL to "http://127.0.0.1:8000" and add "http://127.0.0.1:8000/*"
+// to host_permissions in manifest.json (removed from the published version: reviewers flag unused permissions).
 const API_URL = "https://huntboard-api-htbm.onrender.com"
 const APP_URL = "https://huntboard.dev"
 

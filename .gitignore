@@ -3,3 +3,6 @@ learning/
 
 # macOS folder metadata
 .DS_Store
+
+# Zipped extension builds (made by extension/package.sh)
+extension-build/

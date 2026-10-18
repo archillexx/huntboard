@@ -6,6 +6,7 @@ import { AuthPage } from './pages/AuthPage'
 import { Dashboard } from './pages/Dashboard'
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
 import { Landing } from './pages/Landing'
+import { PrivacyPage } from './pages/PrivacyPage'
 import { VerifyPage } from './pages/VerifyPage'
 
 const App = () => {
@@ -40,6 +41,7 @@ const App = () => {
     return (
         <Routes>
             <Route path="/" element={token ? <Navigate to="/jobs" replace /> : <Landing />} />
+            <Route path="/privacy" element={<PrivacyPage />} />
             <Route path="/login" element={authPage("login")} />
             <Route path="/signup" element={authPage("signup")} />
             <Route path="/forgot-password" element={token ? <Navigate to="/jobs" replace /> : <ForgotPasswordPage onLogin={login} />} />

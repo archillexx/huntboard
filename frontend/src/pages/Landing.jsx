@@ -93,6 +93,9 @@ export const Landing = () => {
                     ))}
                 </section>
             </main>
+            <footer className="page-width pb-10 text-sm text-muted-2">
+                <Link to="/privacy" className="inline-flex min-h-11 items-center hover:underline">Privacy</Link>
+            </footer>
         </div>
     )
 }

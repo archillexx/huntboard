@@ -3,9 +3,20 @@
   "name": "Huntboard",
   "version": "0.1.0",
   "description": "Save the job you're looking at to Huntboard in one click.",
+  "homepage_url": "https://huntboard.dev",
+  "icons": {
+    "48": "icons/icon-48.png",
+    "96": "icons/icon-96.png",
+    "128": "icons/icon-128.png"
+  },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Save to Huntboard"
+    "default_title": "Save to Huntboard",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png"
+    }
   },
   "permissions": [
     "activeTab",
@@ -13,13 +24,19 @@
     "storage"
   ],
   "host_permissions": [
-    "https://huntboard-api-htbm.onrender.com/*",
-    "http://127.0.0.1:8000/*"
+    "https://huntboard-api-htbm.onrender.com/*"
   ],
   "browser_specific_settings": {
     "gecko": {
       "id": "extension@huntboard.dev",
-      "strict_min_version": "115.0"
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": [
+          "websiteContent",
+          "authenticationInfo",
+          "personallyIdentifyingInfo"
+        ]
+      }
     }
   }
 }
