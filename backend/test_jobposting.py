@@ -136,3 +136,27 @@ def test_parse_page_spots_an_already_saved_job_before_any_ai_call(client, monkey
 
 def test_parse_page_needs_a_login(client):
     assert client.post("/jobs/parse-page", json={"url": "https://x.com", "pageText": "p"}).status_code == 401
+
+
+# ---------- 4. tidying ----------
+
+from jobposting import normalise_company, normalise_location
+
+
+def test_locations_get_one_shape():
+    assert normalise_location("Brisbane, Queensland") == "Brisbane, QLD"
+    assert normalise_location("Sydney NSW 2000") == "Sydney, NSW"
+    assert normalise_location("Perth WA") == "Perth, WA"
+    assert normalise_location("Melbourne, VIC") == "Melbourne, VIC"
+    assert normalise_location("Fully remote") == "Remote"
+    assert normalise_location("  ") is None
+
+
+def test_unknown_location_shapes_are_kept_as_written():
+    assert normalise_location("Auckland, New Zealand") == "Auckland, New Zealand"
+
+
+def test_company_legal_suffixes_are_trimmed():
+    assert normalise_company("Quartex Software Pty Ltd") == "Quartex Software"
+    assert normalise_company("Acme Limited") == "Acme"
+    assert normalise_company("TechnologyOne") == "TechnologyOne"

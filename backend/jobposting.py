@@ -160,13 +160,51 @@ def extract_job_posting(page_text: str, llm_client=None) -> ExtractedPosting:
             raise ExtractionFailed("Could not read the job posting after 2 attempts")
 
 
-# ---------- 4. Choosing the path ----------
+# ---------- 4. Tidying the fields (same rules for structured data and AI answers) ----------
+
+STATES = {
+    "new south wales": "NSW", "victoria": "VIC", "queensland": "QLD", "western australia": "WA",
+    "south australia": "SA", "tasmania": "TAS", "australian capital territory": "ACT", "northern territory": "NT",
+}
+STATE_CODES = set(STATES.values())
+COMPANY_SUFFIXES = re.compile(r"[,\s]+(pty\.?\s*ltd\.?|pty\.?\s*limited|ltd\.?|limited|inc\.?|llc)$", re.IGNORECASE)
+
+
+def normalise_location(location: str | None) -> str | None:
+    """One shape for every location: "City, STATE" ("Brisbane, Queensland 4000" -> "Brisbane, QLD")."""
+    if not location or not location.strip():
+        return None
+    text = re.sub(r"\b\d{4}\b", "", location)            # drop Australian postcodes
+    text = re.sub(r"\s+", " ", text).strip(" ,")
+    if text.lower() in {"remote", "fully remote", "work from home"}:
+        return "Remote"
+    for name, code in STATES.items():                    # full state names -> codes
+        text = re.sub(rf"\b{name}\b", code, text, flags=re.IGNORECASE)
+    words = text.replace(",", " ").split()
+    if len(words) >= 2 and words[-1].upper() in STATE_CODES:
+        return f"{' '.join(words[:-1])}, {words[-1].upper()}"   # "Sydney NSW" -> "Sydney, NSW"
+    return text                                          # unknown shape: keep it as the page wrote it
+
+
+def normalise_company(company: str | None) -> str | None:
+    """Trim legal suffixes, so "Quartex Software Pty Ltd" and "Quartex Software" are one company."""
+    if not company or not company.strip():
+        return None
+    return COMPANY_SUFFIXES.sub("", company.strip()).strip() or None
+
+
+def _tidy(fields: dict) -> dict:
+    return {**fields, "company": normalise_company(fields.get("company")),
+            "location": normalise_location(fields.get("location"))}
+
+
+# ---------- 5. Choosing the path ----------
 
 def read_job_page(json_ld=None, selection: str | None = None, page_text: str | None = None, llm_client=None) -> dict:
     """Job fields plus which source produced them: "json_ld", "selection" or "page"."""
     from_structured = job_from_json_ld(json_ld)
     if from_structured:
-        return {**from_structured, "source": "json_ld"}
+        return {**_tidy(from_structured), "source": "json_ld"}
 
     selection = (selection or "").strip()
     if len(selection) >= MIN_SELECTION_CHARS:
@@ -177,4 +215,4 @@ def read_job_page(json_ld=None, selection: str | None = None, page_text: str | N
         raise ValueError("Nothing to read: no structured data, no selection and no page text")
 
     posting = extract_job_posting(text, llm_client)
-    return {**posting.model_dump(), "source": source}
+    return {**_tidy(posting.model_dump()), "source": source}
