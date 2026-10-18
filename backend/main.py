@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from codes import CodeRejected, check_code, issue_code, seconds_until_resend
 from database import SessionLocal
 from extraction import ExtractionFailed, extract_skills
+from jobposting import read_job_page
 from mailer import EmailNotSent, send_email
 from models import Job, JobSkill, ProfileSkill, Skill, User
 from scoring import fit_score, most_missed_skills, normalise_skills
@@ -241,6 +242,40 @@ def list_jobs(db: Session = Depends(get_db), user: User = Depends(get_current_us
     skills = job_skill_names(db, user.id)
     mine = profile_skill_names(db, user.id)
     return [job_to_api(job, skills.get(job.id, []), mine) for job in jobs]
+
+
+class PageIn(BaseModel):
+    """What the browser extension sends: the raw material from the tab you're on."""
+    url: str = Field(min_length=1, max_length=2000)
+    jsonLd: list | dict | None = None                         # structured data blocks, if the page had any
+    selection: str | None = Field(default=None, max_length=50_000)
+    pageText: str | None = Field(default=None, max_length=300_000)
+
+
+@app.post("/jobs/parse-page")
+def parse_page(page_in: PageIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Read a job page into fields for the extension to show. Nothing is saved here:
+    you check (and fix) the fields in the popup, then it calls POST /jobs."""
+    job_url = canonical_job_url(page_in.url)
+    # Already saved? Answer before spending an AI call on it.
+    existing = db.scalar(select(Job).where(Job.user_id == user.id, Job.job_url == job_url))
+    if existing is not None:
+        return {"jobUrl": job_url, "alreadySavedJobId": existing.id}
+    try:
+        fields = read_job_page(page_in.jsonLd, page_in.selection, page_in.pageText)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="This page has no text to read.")
+    except ExtractionFailed:
+        raise HTTPException(status_code=502, detail="Couldn't read this page. Select the job text and try again.")
+    return {
+        "jobUrl": job_url,
+        "companyName": fields["company"],
+        "jobRole": fields["role"],
+        "location": fields["location"],
+        "jobDescription": fields["description"],
+        "source": fields["source"],
+        "alreadySavedJobId": None,
+    }
 
 
 @app.post("/jobs", status_code=201)
