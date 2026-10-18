@@ -102,7 +102,7 @@ async function readCurrentTab() {
     const [result] = await ext.scripting.executeScript({ target: { tabId: tab.id }, func: collectPage })
     page = result.result
   } catch {
-    return setStatus("Chrome doesn't let extensions read this page. Open a job ad and try again.", { error: true })
+    return setStatus("Your browser doesn't let extensions read this page (browser settings and add-on store pages are protected). Open a job ad and try again.", { error: true })
   }
 
   try {
