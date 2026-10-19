@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
@@ -8,7 +9,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pwdlib import PasswordHash
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session
 
@@ -42,13 +43,37 @@ app.add_middleware(
 JobStatus = Literal["Considering", "Applied", "Replied", "Interview", "Rejected", "Ghosted"]
 
 
+# Invisible control characters (NUL and friends) that some web pages carry. Postgres refuses to store
+# NUL in text columns, which crashed a real save. Line breaks and tabs are kept.
+CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def _strip_control_chars(value):
+    if isinstance(value, str):
+        return CONTROL_CHARS.sub("", value)
+    if isinstance(value, list):
+        return [_strip_control_chars(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _strip_control_chars(v) for k, v in value.items()}
+    return value
+
+
+class CleanTextModel(BaseModel):
+    """Base for request bodies holding text from the outside world: cleaned before any other validation."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def strip_control_chars(cls, data):
+        return _strip_control_chars(data)
+
+
 class JobStatusUpdate(BaseModel):
     """What a client sends to change a job's status."""
 
     jobStatus: JobStatus
 
 
-class JobIn(BaseModel):
+class JobIn(CleanTextModel):
     """What a client must send to create a job."""
 
     model_config = ConfigDict(str_strip_whitespace=True)
@@ -63,7 +88,7 @@ class JobIn(BaseModel):
     salary: str | None = Field(default=None, max_length=200)
 
 
-class SkillsIn(BaseModel):
+class SkillsIn(CleanTextModel):
     """A full list of skill names; it replaces whatever was saved before."""
 
     skills: list[str]
@@ -246,7 +271,7 @@ def list_jobs(db: Session = Depends(get_db), user: User = Depends(get_current_us
     return [job_to_api(job, skills.get(job.id, []), mine) for job in jobs]
 
 
-class PageIn(BaseModel):
+class PageIn(CleanTextModel):
     """What the browser extension sends: the raw material from the tab you're on."""
     url: str = Field(min_length=1, max_length=2000)
     jsonLd: list | dict | None = None                         # structured data blocks, if the page had any

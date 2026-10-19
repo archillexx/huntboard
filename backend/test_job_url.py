@@ -44,3 +44,16 @@ def test_same_linkedin_job_with_new_tracking_is_still_a_duplicate(client):
     headers = login_as(client, "fay@example.com")
     assert new_job(client, headers, "https://www.linkedin.com/jobs/view/42/?refId=one").status_code == 201
     assert new_job(client, headers, "https://www.linkedin.com/jobs/view/42/?refId=two").status_code == 409
+
+
+def test_invisible_nul_bytes_from_a_web_page_are_stripped_before_saving(client):
+    # A real SEEK description carried a NUL byte (\x00) and Postgres refused the save.
+    headers = login_as(client, "fay@example.com")
+    response = client.post("/jobs", headers=headers, json={
+        "companyName": "Compare\x00 the Market", "jobRole": "Software Engineer",
+        "jobDescription": "Who We Are\x00\n\nWe help Australians\tcompare.\x07",
+    })
+    assert response.status_code == 201
+    job = response.json()
+    assert job["companyName"] == "Compare the Market"
+    assert job["jobDescription"] == "Who We Are\n\nWe help Australians\tcompare."   # newline and tab kept

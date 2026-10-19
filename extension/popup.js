@@ -140,6 +140,17 @@ function fillForm(job) {
 
 // ---------- saving ----------
 
+// Turn a failed save into a reason you can act on, instead of one generic message.
+function saveErrorMessage(status, body) {
+  if (status >= 500) return "Huntboard had a problem saving this job. Try again in a moment."
+  if (Array.isArray(body.detail) && body.detail.length) {     // 422: which field, and why
+    const { loc = [], msg = "" } = body.detail[0]
+    return `Couldn't save: ${loc.at(-1) ?? "a field"} — ${msg}`
+  }
+  if (typeof body.detail === "string") return body.detail
+  return "Couldn't save this job. Check the details and try again."
+}
+
 $("job-view").addEventListener("submit", async (e) => {
   e.preventDefault()
   $("save").disabled = true
@@ -163,7 +174,7 @@ $("job-view").addEventListener("submit", async (e) => {
       show("job-view", false)
       return setStatus(`Already saved. <a href="${APP_URL}/jobs" target="_blank">Open Huntboard</a>`, { html: true })
     }
-    if (!response.ok) return setStatus("Couldn't save this job. Check company and role.", { error: true })
+    if (!response.ok) return setStatus(saveErrorMessage(response.status, body), { error: true })
     show("job-view", false)
     const fit = body.fitScore === null ? "" : ` — ${Math.round(body.fitScore)}% fit`
     setStatus(`Saved ✓${fit}. <a href="${APP_URL}/jobs" target="_blank">Open Huntboard</a>`, { html: true })
