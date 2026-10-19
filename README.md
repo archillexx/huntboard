@@ -1,6 +1,6 @@
 # Huntboard
 
-[![CI](https://github.com/archillexx/job_tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/archillexx/job_tracker/actions/workflows/ci.yml)
+[![CI](https://github.com/archillexx/huntboard/actions/workflows/ci.yml/badge.svg)](https://github.com/archillexx/huntboard/actions/workflows/ci.yml)
 
 A job tracker for developers: save jobs from SEEK, LinkedIn or Indeed in one click, track each application's status, and see your fit score and skill gaps at a glance.
 
